@@ -41,6 +41,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: object) -> Response:
+        import os
+
+        # Skip rate limiting entirely in test environment
+        if os.environ.get("APP_ENV") == "test":
+            return await call_next(request)  # type: ignore[operator]
+
         path = request.url.path
 
         # Exempt health / docs / static

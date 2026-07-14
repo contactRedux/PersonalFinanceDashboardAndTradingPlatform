@@ -86,8 +86,8 @@ class XGBoostSignalClassifier:
         """
         cols = [c for c in _FEATURE_COLS if c in df.columns]
         self._feature_cols = cols
-        X = df[cols].values
-        y = df[label_col].values.astype(int)
+        X = df[cols].to_numpy(dtype=np.float32)
+        y = df[label_col].to_numpy(dtype=np.int32)
 
         self._model = xgb.XGBClassifier(
             n_estimators=200,
@@ -96,9 +96,9 @@ class XGBoostSignalClassifier:
             subsample=0.8,
             colsample_bytree=0.8,
             eval_metric="logloss",
-            use_label_encoder=False,
             random_state=42,
-            n_jobs=-1,
+            n_jobs=1,  # single-threaded: avoids segfault on macOS with NumPy 2.x
+            tree_method="hist",
         )
         self._model.fit(X, y)
 

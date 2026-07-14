@@ -19,6 +19,10 @@ This folder contains **YAML manifest files** — declarative configuration files
 | `celery-worker.yaml` | The Celery background job worker Deployment |
 | `redis.yaml` | A Redis Deployment + Service for in-cluster caching |
 | `ingress.yaml` | An NGINX Ingress controller that routes external HTTP/S traffic to the right Service |
+| `timescaledb.yaml` | A TimescaleDB StatefulSet + Service + PVC (10Gi) for time-series market data storage |
+| `mongodb.yaml` | A MongoDB StatefulSet + Service + PVC (10Gi) for document storage (trade journal, news, etc.) |
+| `monitoring.yaml` | Prometheus Deployment + Service + ConfigMap and Grafana Deployment + Service for observability |
+| `hpa.yaml` | HorizontalPodAutoscalers for `backend` (2–10 replicas) and `celery-worker` (1–5 replicas) |
 
 ---
 

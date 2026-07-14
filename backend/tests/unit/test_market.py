@@ -296,3 +296,51 @@ class TestSnapshotEnrichment:
         assert "latest_news" in body
         assert isinstance(body["latest_news"], list)
         assert "timestamp" in body
+
+
+# ─── SSE Indicator Streaming endpoint ────────────────────────────────────────
+
+
+class TestSSEStreamEndpoint:
+    """Tests for GET /api/v1/market/indicators/stream/{symbol}."""
+
+    @pytest.mark.asyncio
+    async def test_sse_returns_text_event_stream_content_type(self, client) -> None:
+        """
+        The streaming endpoint must return Content-Type: text/event-stream.
+        Redis is mocked to be unavailable so the generator closes after the
+        initial snapshot (no blocking).
+        """
+        with patch(
+            "app.data.cache.redis_client.get_redis_pool",
+            side_effect=Exception("no redis"),
+        ):
+            resp = await client.get(
+                "/api/v1/market/indicators/stream/AAPL?indicators=sma_20",
+                headers=_auth_header(),
+            )
+        # FastAPI/httpx may return 200 with streaming; content-type check is the key assertion
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers.get("content-type", "")
+
+    def test_indicator_spec_parser_sma_and_rsi(self) -> None:
+        """_parse_indicator_spec correctly parses 'sma_20' and 'rsi_14'."""
+        from app.api.v1.market import _parse_indicator_spec  # noqa: PLC0415
+
+        sma = _parse_indicator_spec("sma_20")
+        assert sma["type"] == "sma"
+        assert sma["params"]["period"] == 20
+
+        rsi = _parse_indicator_spec("rsi_14")
+        assert rsi["type"] == "rsi"
+        assert rsi["params"]["period"] == 14
+
+    def test_indicator_spec_parser_macd(self) -> None:
+        """_parse_indicator_spec correctly parses 'macd_12_26_9'."""
+        from app.api.v1.market import _parse_indicator_spec  # noqa: PLC0415
+
+        macd = _parse_indicator_spec("macd_12_26_9")
+        assert macd["type"] == "macd"
+        assert macd["params"]["fast"] == 12
+        assert macd["params"]["slow"] == 26
+        assert macd["params"]["signal"] == 9

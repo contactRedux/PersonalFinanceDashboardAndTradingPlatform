@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LineSeries } from "lightweight-charts";
 import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
 import type { BarData } from "@/lib/api/market";
 
@@ -52,8 +53,6 @@ export function usePitchforkTool(
 
   // Map drawing ID → [median, upper, lower] LineSeries
   const lineSeriesRef = useRef<Map<string, [ISeriesApi<"Line">, ISeriesApi<"Line">, ISeriesApi<"Line">]>>(new Map());
-
-  const { LineSeries } = require("lightweight-charts") as typeof import("lightweight-charts");
 
   const getLastBarTime = useCallback((): number => {
     if (bars.length === 0) return Date.now() / 1000;

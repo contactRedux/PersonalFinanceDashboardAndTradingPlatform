@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_only}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./infra/docker/init-timescaledb.sql:/docker-entrypoint-initdb.d/init.sql
@@ -80,7 +80,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: quantnexus_celery
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    command: uv run celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
     env_file: .env
     depends_on:
       redis:

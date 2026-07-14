@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LineSeries } from "lightweight-charts";
 import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
 import type { BarData } from "@/lib/api/market";
 
@@ -50,9 +51,6 @@ export function useTrendlineTool(
   const lineSeriesRef = useRef<
     Map<string, ISeriesApi<"Line">>
   >(new Map());
-
-  // Import LineSeries lazily to avoid SSR issues
-  const { LineSeries } = require("lightweight-charts") as typeof import("lightweight-charts");
 
   const extendToPresent = useCallback(
     (

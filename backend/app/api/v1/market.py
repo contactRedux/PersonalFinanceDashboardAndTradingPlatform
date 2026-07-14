@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.cache.quote_cache import get_quotes, set_quote
-from app.dependencies import CurrentUser, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db
 from app.services.market_data.router import get_provider
 
 router = APIRouter()
@@ -449,6 +449,55 @@ def _build_demo_bars(symbol: str, n: int = 60) -> list[float]:
     return [base + 10 * math.sin(i / 5) + i * 0.1 for i in range(n)]
 
 
+# ─── Indicator spec parser ────────────────────────────────────────────────────
+
+
+def _parse_indicator_spec(spec: str) -> dict:
+    """
+    Parse a compact indicator spec string into a structured dict.
+
+    Examples
+    --------
+    "sma_20"        → {"type": "sma",  "params": {"period": 20}}
+    "rsi_14"        → {"type": "rsi",  "params": {"period": 14}}
+    "macd_12_26_9"  → {"type": "macd", "params": {"fast": 12, "slow": 26, "signal": 9}}
+    """
+    parts = spec.strip().lower().split("_")
+    ind_type = parts[0]
+    numeric = [int(p) for p in parts[1:] if p.isdigit()]
+
+    if ind_type == "macd":
+        params = {
+            "fast": numeric[0] if len(numeric) > 0 else 12,
+            "slow": numeric[1] if len(numeric) > 1 else 26,
+            "signal": numeric[2] if len(numeric) > 2 else 9,
+        }
+    else:
+        params = {"period": numeric[0] if numeric else 14}
+
+    return {"type": ind_type, "params": params}
+
+
+def _compute_indicator(closes: list[float], spec: dict) -> float | dict:
+    """Compute a single indicator value from a spec dict."""
+    ind_type = spec["type"]
+    params = spec.get("params", {})
+
+    if ind_type == "sma":
+        return round(_sma(closes, params.get("period", 20)), 4)
+    if ind_type == "ema":
+        return round(_ema(closes, params.get("period", 20)), 4)
+    if ind_type == "rsi":
+        return round(_rsi(closes, params.get("period", 14)), 4)
+    if ind_type == "macd":
+        return round(_macd_signal(closes), 4)
+    if ind_type in ("bb", "bollinger"):
+        period = params.get("period", 20)
+        upper, lower = _bollinger(closes, period)
+        return {"upper": round(upper, 4), "lower": round(lower, 4)}
+    return None
+
+
 # ─── Indicators endpoint ──────────────────────────────────────────────────────
 
 _INDICATORS_TTL = 300  # Redis TTL seconds
@@ -510,3 +559,119 @@ async def get_indicators(symbol: str, _: CurrentUser):
             pass  # best-effort cache write; non-fatal
 
     return payload
+
+
+# ─── SSE Indicator Streaming endpoint ────────────────────────────────────────
+
+_SSE_KEEPALIVE_TIMEOUT = 30  # seconds to wait for a Redis pub/sub message
+
+
+@router.get("/indicators/stream/{symbol}")
+async def stream_indicators(
+    symbol: str,
+    indicators: str = Query("sma_20", description="Comma-separated indicator specs e.g. sma_20,rsi_14,macd_12_26_9"),
+    _: CurrentUser = None,  # type: ignore[assignment]
+):
+    """
+    Server-Sent Events stream of computed indicator values.
+
+    Fetches the last 200 bars for the symbol, computes all requested indicators,
+    sends current values, then subscribes to Redis pub/sub for new bar events.
+    On each new bar, recomputes and sends updated values.
+    Client disconnects trigger clean unsubscription.
+    """
+    from fastapi.responses import StreamingResponse  # noqa: PLC0415
+
+    sym = symbol.upper()
+    specs = [_parse_indicator_spec(s) for s in indicators.split(",") if s.strip()]
+
+    async def generate():
+        # 1. Fetch initial bars
+        try:
+            provider = get_provider()
+            bars = await provider.get_bars(sym, "1d", limit=200)
+            closes = [float(b.close) for b in bars] if bars else []
+        except Exception:  # noqa: BLE001
+            closes = []
+
+        if not closes:
+            closes = _build_demo_bars(sym, n=200)
+
+        # 2. Compute initial indicator values
+        values: dict = {}
+        for spec in specs:
+            key = f"{spec['type']}_{spec['params'].get('period', spec['params'].get('fast', ''))}"
+            values[key] = _compute_indicator(closes, spec)
+
+        initial_payload = {
+            "type": "snapshot",
+            "symbol": sym,
+            "indicators": values,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        yield f"data: {json.dumps(initial_payload)}\n\n"
+
+        # 3. Subscribe to Redis pub/sub for new bar events
+        pubsub = None
+        try:
+            from app.data.cache.redis_client import get_redis_pool  # noqa: PLC0415
+
+            redis_client = await get_redis_pool()
+            pubsub = redis_client.pubsub()
+            channel = f"channel:market:{sym}"
+            await pubsub.subscribe(channel)
+        except Exception:  # noqa: BLE001
+            # Redis unavailable: we already sent initial values, close cleanly
+            return
+
+        # 4. Listen for new bar events
+        try:
+            while True:
+                try:
+                    message = await asyncio.wait_for(
+                        pubsub.get_message(ignore_subscribe_messages=True, timeout=None),
+                        timeout=_SSE_KEEPALIVE_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    # Send keepalive to prevent proxy/browser from closing the connection
+                    yield 'data: {"type": "keepalive"}\n\n'
+                    continue
+
+                if message is None:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                # Refetch bars after a new bar event
+                try:
+                    provider = get_provider()
+                    bars = await provider.get_bars(sym, "1d", limit=200)
+                    new_closes = [float(b.close) for b in bars] if bars else closes
+                except Exception:  # noqa: BLE001
+                    new_closes = closes
+
+                closes = new_closes
+                updated_values: dict = {}
+                for spec in specs:
+                    key = f"{spec['type']}_{spec['params'].get('period', spec['params'].get('fast', ''))}"
+                    updated_values[key] = _compute_indicator(closes, spec)
+
+                update_payload = {
+                    "type": "update",
+                    "symbol": sym,
+                    "indicators": updated_values,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                yield f"data: {json.dumps(update_payload)}\n\n"
+
+        except GeneratorExit:
+            pass
+        finally:
+            try:
+                await pubsub.unsubscribe()
+                await pubsub.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+

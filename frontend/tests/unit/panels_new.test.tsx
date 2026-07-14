@@ -19,6 +19,10 @@ vi.mock("@/lib/api/client", () => ({
   getAccessToken: vi.fn(() => "mock-token"),
 }));
 
+vi.mock("@/hooks/useRegimeOverlay", () => ({
+  useRegimeOverlay: vi.fn(() => ({ regime: null, probabilities: null, loading: false })),
+}));
+
 vi.mock("@/lib/api/market", () => ({
   getBars: vi.fn().mockResolvedValue({ bars: [] }),
   searchSymbols: vi.fn().mockResolvedValue({ results: [] }),

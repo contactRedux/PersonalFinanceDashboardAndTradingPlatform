@@ -121,6 +121,98 @@ def test_lstm_training_runs_on_synthetic_data(tmp_path):
 
 
 # ─── XGBoost tests (ST-17) ────────────────────────────────────────────────────
+# These tests run XGBoost in a subprocess to avoid a segfault caused by
+# PyTorch's BLAS state conflicting with XGBoost's C extension when both are
+# loaded in the same process (reproducible on macOS aarch64 with
+# NumPy 2.5 + XGBoost 3.x + PyTorch 2.x).
+
+import subprocess  # noqa: E402
+from unittest.mock import patch  # noqa: E402, PLC0415
+
+_XGB_SCRIPT = """\
+import sys, os, json, tempfile
+sys.path.insert(0, {repo_root!r})
+sys.path.insert(0, os.path.join({repo_root!r}, "backend"))
+# Set weights dir BEFORE importing the model (module-level _WEIGHTS_DIR reads env at import time)
+os.environ["ML_WEIGHTS_DIR"] = sys.argv[1]
+import numpy as np
+import pandas as pd
+
+rng = np.random.default_rng(42)
+n = 300
+prices = 100.0 + np.cumsum(rng.normal(0, 0.5, n))
+df = pd.DataFrame(
+    {{
+        "open": prices,
+        "high": prices + rng.uniform(0, 1, n),
+        "low": prices - rng.uniform(0, 1, n),
+        "close": prices + rng.normal(0, 0.2, n),
+        "volume": rng.uniform(1_000_000, 5_000_000, n),
+    }},
+    index=pd.date_range("2023-01-01", periods=n, freq="D"),
+)
+
+from ml.models.xgboost.model import (
+    XGBoostSignalClassifier,
+    build_xgb_features,
+    _LABEL_THRESHOLD,
+)
+
+featured = build_xgb_features(df)
+featured["label"] = (featured["fwd_return_5"] > _LABEL_THRESHOLD).astype(int)
+featured = featured.drop(columns=["fwd_return_5"], errors="ignore")
+
+weights_dir = sys.argv[1]
+# (Already set above; redundant but harmless)
+
+clf = XGBoostSignalClassifier()
+clf.train(featured, label_col="label")
+
+result = clf.predict(featured)
+assert result["signal"] in [0, 1], f"bad signal: {{result}}"
+assert 0.0 <= result["probability"] <= 1.0, f"bad prob: {{result}}"
+
+weight_path = clf.save("SPY")
+assert os.path.exists(weight_path), f"weight file missing: {{weight_path}}"
+
+loaded_clf = XGBoostSignalClassifier.load("SPY")
+result2 = loaded_clf.predict(featured)
+assert result2["signal"] in [0, 1], f"bad signal after load: {{result2}}"
+
+# Feature importance
+importance = clf.get_feature_importance()
+assert len(importance) > 0, "empty feature importance"
+assert all("feature" in i and "importance" in i for i in importance)
+values = [i["importance"] for i in importance]
+assert values == sorted(values, reverse=True), "importance not sorted"
+
+print("OK")
+"""
+
+import os as _os
+# tests/unit/test_ml_models.py → 4 levels up = workspace root
+_REPO_ROOT = _os.path.dirname(
+    _os.path.dirname(
+        _os.path.dirname(
+            _os.path.dirname(_os.path.abspath(__file__))
+        )
+    )
+)
+_PYTHON = sys.executable
+
+
+def _run_xgb_script(tmp_path: "Path") -> subprocess.CompletedProcess:
+    """Execute the XGBoost test script in an isolated subprocess."""
+    script = _XGB_SCRIPT.format(repo_root=_REPO_ROOT)
+    env = _os.environ.copy()
+    env["PYTHONPATH"] = f"{_REPO_ROOT}{_os.pathsep}{_os.path.join(_REPO_ROOT, 'backend')}{_os.pathsep}{env.get('PYTHONPATH', '')}"
+    return subprocess.run(
+        [_PYTHON, "-c", script, str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=env,
+    )
 
 
 @pytest.mark.skipif(
@@ -128,35 +220,14 @@ def test_lstm_training_runs_on_synthetic_data(tmp_path):
     reason="xgboost not installed",
 )
 def test_xgboost_train_and_predict(tmp_path):
-    """XGBoost classifier trains and returns valid signal + probability."""
-    import os  # noqa: PLC0415
-    from ml.models.xgboost.model import (  # noqa: PLC0415
-        XGBoostSignalClassifier,
-        build_xgb_features,
-        _LABEL_THRESHOLD,
-    )
-
-    df = _make_ohlcv(300)
-    featured = build_xgb_features(df)
-    featured["label"] = (featured["fwd_return_5"] > _LABEL_THRESHOLD).astype(int)
-    featured = featured.drop(columns=["fwd_return_5"], errors="ignore")
-
-    with patch.dict(os.environ, {"ML_WEIGHTS_DIR": str(tmp_path)}):
-        clf = XGBoostSignalClassifier()
-        clf.train(featured, label_col="label")
-
-        # Predict
-        result = clf.predict(featured)
-        assert result["signal"] in [0, 1]
-        assert 0.0 <= result["probability"] <= 1.0
-
-        # Save + load
-        weight_path = clf.save("SPY")
-        assert weight_path.exists()
-
-        loaded_clf = XGBoostSignalClassifier.load("SPY")
-        result2 = loaded_clf.predict(featured)
-        assert result2["signal"] in [0, 1]
+    """XGBoost classifier trains and returns valid signal + probability (subprocess)."""
+    result = _run_xgb_script(tmp_path)
+    if result.returncode != 0:
+        pytest.fail(
+            f"XGBoost subprocess failed (rc={result.returncode}):\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+    assert "OK" in result.stdout
 
 
 @pytest.mark.skipif(
@@ -164,30 +235,13 @@ def test_xgboost_train_and_predict(tmp_path):
     reason="xgboost not installed",
 )
 def test_xgboost_feature_importance_non_empty(tmp_path):
-    """get_feature_importance returns a non-empty ranked list."""
-    import os  # noqa: PLC0415
-    from ml.models.xgboost.model import (  # noqa: PLC0415
-        XGBoostSignalClassifier,
-        build_xgb_features,
-        _LABEL_THRESHOLD,
-    )
-
-    df = _make_ohlcv(300)
-    featured = build_xgb_features(df)
-    featured["label"] = (featured["fwd_return_5"] > _LABEL_THRESHOLD).astype(int)
-    featured = featured.drop(columns=["fwd_return_5"], errors="ignore")
-
-    with patch.dict(os.environ, {"ML_WEIGHTS_DIR": str(tmp_path)}):
-        clf = XGBoostSignalClassifier()
-        clf.train(featured, label_col="label")
-        importance = clf.get_feature_importance()
-
-    assert len(importance) > 0
-    assert all("feature" in item and "importance" in item for item in importance)
-    # Verify ranking: descending importance
-    values = [item["importance"] for item in importance]
-    assert values == sorted(values, reverse=True)
-
-
-# Bring patch into scope for xgboost tests
-from unittest.mock import patch  # noqa: E402, PLC0415
+    """get_feature_importance returns a non-empty ranked list (subprocess)."""
+    # The subprocess test above already validates feature importance.
+    # This test re-runs the same script and checks the exit code.
+    result = _run_xgb_script(tmp_path)
+    if result.returncode != 0:
+        pytest.fail(
+            f"XGBoost feature importance subprocess failed:\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+    assert "OK" in result.stdout

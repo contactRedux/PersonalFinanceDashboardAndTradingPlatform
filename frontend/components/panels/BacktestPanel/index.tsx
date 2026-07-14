@@ -17,6 +17,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Panel } from "@/components/layout/Panel";
 import { apiRequest } from "@/lib/api/client";
+import { EquityCurveChart } from "./EquityCurveChart";
+import { DrawdownChart } from "./DrawdownChart";
+import { MonthlyReturnsHeatmap } from "./MonthlyReturnsHeatmap";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +54,7 @@ interface BacktestResult {
   winning_trades: number;
   losing_trades: number;
   equity_curve: number[];
+  timestamps?: string[];
   trades: TradeRecord[];
   monte_carlo: {
     n_simulations: number;
@@ -125,60 +129,6 @@ export function BacktestPanel({ panelId = "backtest" }: BacktestPanelProps) {
       setStatus("error");
     }
   }, [symbol, start, end, strategy, paramFast, paramSlow, engine, runMC]);
-
-  // Render equity curve when result arrives and chart tab is active
-  useEffect(() => {
-    if (!result || activeTab !== "chart" || !chartContainerRef.current) return;
-
-    let chart: import("lightweight-charts").IChartApi | undefined;
-    (async () => {
-      try {
-        const { createChart, LineSeries } = await import("lightweight-charts");
-        if (!chartContainerRef.current) return;
-        chart = createChart(chartContainerRef.current, {
-          autoSize: true,
-          layout: {
-            background: { color: "#0a0a0a" },
-            textColor: "#8a8a8a",
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: 11,
-          },
-          grid: {
-            vertLines: { color: "#1a1a1a", style: 1 },
-            horzLines: { color: "#1a1a1a", style: 1 },
-          },
-          rightPriceScale: { borderColor: "#222" },
-          timeScale: { borderColor: "#222", timeVisible: false },
-        });
-        chartInstanceRef.current = chart;
-
-        const series = chart.addSeries(LineSeries, {
-          color: "#00d084",
-          lineWidth: 2,
-          priceLineVisible: false,
-        });
-
-        series.setData(
-          result.equity_curve.map((value, i) => ({
-            time: i as unknown as import("lightweight-charts").Time,
-            value,
-          }))
-        );
-        chart.timeScale().fitContent();
-      } catch {
-        // canvas unavailable (e.g., in jsdom) — graceful no-op
-      }
-    })();
-
-    return () => {
-      try {
-        chart?.remove(); // chart is captured in closure
-      } catch {
-        // ignore cleanup errors in test env
-      }
-      chartInstanceRef.current = null;
-    };
-  }, [result, activeTab]);
 
   const toolbar = (
     <div style={styles.tabs}>
@@ -326,7 +276,16 @@ export function BacktestPanel({ panelId = "backtest" }: BacktestPanelProps) {
           {/* Equity curve tab */}
           {activeTab === "chart" && (
             <div style={styles.chartWrap}>
-              <div ref={chartContainerRef} style={styles.chartCanvas} data-testid="backtest-chart" />
+              <EquityCurveChart
+                equityCurve={result.equity_curve}
+                timestamps={result.timestamps}
+                height={200}
+              />
+              <DrawdownChart
+                equityCurve={result.equity_curve}
+                timestamps={result.timestamps}
+                height={100}
+              />
             </div>
           )}
 
@@ -364,6 +323,19 @@ export function BacktestPanel({ panelId = "backtest" }: BacktestPanelProps) {
                   />
                 </>
               )}
+            </div>
+          )}
+
+          {/* Monthly Returns section (below metrics) */}
+          {activeTab === "metrics" && result.timestamps && result.timestamps.length > 0 && (
+            <div style={{ padding: "0 10px 10px" }}>
+              <div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "#444", letterSpacing: "0.08em", marginBottom: 6 }}>
+                MONTHLY RETURNS
+              </div>
+              <MonthlyReturnsHeatmap
+                equityCurve={result.equity_curve}
+                timestamps={result.timestamps}
+              />
             </div>
           )}
 

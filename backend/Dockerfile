@@ -1,21 +1,24 @@
-FROM registry.redhat.io/ubi9/python-311-minimal:latest
+FROM python:3.11-slim-bookworm
 
 # Create non-root user
 RUN useradd -m -u 1001 appuser
 
 WORKDIR /app
 
-# Install system-level dependencies required by WeasyPrint (PDF rendering)
-# and by PyTorch (libgomp for OpenMP parallelism).
-# ubi9-minimal ships with microdnf.
-RUN microdnf install -y \
-    pango \
-    cairo \
-    cairo-gobject \
-    gdk-pixbuf2 \
-    libffi \
-    libgomp \
-    && microdnf clean all
+# Install system-level dependencies:
+#   - Build tools for packages that compile C/C++ extensions (hmmlearn, etc.)
+#   - WeasyPrint runtime libs (pango, cairo, gdk-pixbuf)
+#   - PyTorch OpenMP runtime (libgomp)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libgdk-pixbuf2.0-0 \
+    libffi8 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install uv for fast dependency installation
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

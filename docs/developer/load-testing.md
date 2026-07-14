@@ -177,7 +177,17 @@ jobs:
 
 ---
 
-## 6. Extending the test suite
+## 6. Running in CI
+
+The load test job is triggered manually:
+1. Go to GitHub Actions
+2. Select "CI" workflow
+3. Click "Run workflow"
+4. The `load-test` job runs after backend and frontend checks pass
+
+---
+
+## 7. Extending the test suite
 
 To add a new script:
 

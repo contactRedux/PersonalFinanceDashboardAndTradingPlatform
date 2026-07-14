@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -164,6 +165,44 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
           NEXT_PUBLIC_WS_URL: ws://localhost:8000
+
+  # ─── Load tests: k6 (manual trigger only) ────────────────────────────────────
+  load-test:
+    name: Load Test (k6)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install k6
+
+      - name: Start services
+        run: docker compose up -d --wait
+        env:
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'ci-load-test-secret-key-32chars-min' }}
+
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break
+            sleep 2
+          done
+
+      - name: Run WebSocket load test
+        run: k6 run tests/load/ws_market.js
+
+      - name: Run REST auth load test
+        run: k6 run tests/load/rest_auth.js
 
   # ─── Terraform: validate IaC (no backend, no credentials needed) ─────────────
   terraform-validate:

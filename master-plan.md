@@ -1,7 +1,7 @@
 # QuantNexus Master Plan — Unified Backlog & Execution Roadmap
 
-**Final State:** All **183 backend + 204 frontend** tests pass. TypeScript clean.
-All Tier 0, 1, 2, and 3 items complete. Tier 4 items are intentionally deferred (see §6).
+**Final State:** All **194 backend + 204 frontend** tests pass. TypeScript clean.
+All Tier 1, 2, and 3 items complete. Tier 0 (COMP-21/22) require GitHub secret configuration by the repo owner. Tier 4 items are intentionally deferred (see §6).
 
 ---
 
@@ -483,31 +483,31 @@ Goal: Infrastructure is production-ready; developer onboarding documentation com
 
 | ID | Tier | Title | Complexity | Status |
 |---|---|---|---|---|
-| COMP-21 | 0 | CI Live-Data Secrets | S | Pending |
-| COMP-22 | 0 | E2E Tests with Live Credentials | M | Pending |
-| ST-J | 1 | Advanced Order Features | M | Pending |
-| ST-Q | 1 | Regime Detection HMM (endpoints + UI) | M | Pending |
-| ST-V | 1 | Indicator Library — Momentum + Trend | M | Pending |
-| ST-W | 1 | Indicator Library — Volume + Structure | M | Pending |
-| ST-X | 1 | Drawing Tools — Pitchfork + Annotation | M | Pending |
-| ST-Y | 1 | AIScorePanel | L | Pending |
-| ST-Z | 1 | BacktestPanel Sub-Components | M | Pending |
-| ST-I | 2 | VPVR Auto-Fetch Wiring | S | Pending |
-| ST-R | 2 | Real-Time Indicator Streaming (SSE) | L | Pending |
-| ST-S | 2 | Portfolio Import (dedup + broker stub) | S | Pending |
-| ST-T | 2 | Multi-User Workspace UI | M | Pending |
-| ST-U | 2 | Tick Data Recorder + Replay | M | Pending |
-| ST-AA | 2 | Screener Presets DB Persistence | S | Pending |
-| ST-AB | 2 | News Adapters — Reddit + SEC EDGAR | M | Pending |
-| ST-AC | 2 | Indicator Library — Extended (Ichimoku, SuperTrend) | L | Pending |
-| ST-AD | 2 | order_book_snapshots Hypertable | M | Pending |
-| ST-AE | 2 | Market Snapshot Enrichment | M | Pending |
-| ST-N | 3 | Load Tests — CI Integration | S | Pending |
-| ST-AF | 3 | Architecture Documentation | S | Pending |
-| ST-AG | 3 | Chart Types — Renko + Line Break | M | Pending |
-| ST-AH | 3 | ADR Expansion (ADR-006/007/008) | S | Pending |
-| ST-AI | 3 | K8s Manifests Completeness Audit | M | Pending |
-| ST-AJ | 3 | Terraform Variable Completion | S | Pending |
+| COMP-21 | 0 | CI Live-Data Secrets | S | **Requires GitHub secret config by repo owner** |
+| COMP-22 | 0 | E2E Tests with Live Credentials | M | **Requires GitHub secret config by repo owner** |
+| ST-J | 1 | Advanced Order Features | M | ✅ Complete |
+| ST-Q | 1 | Regime Detection HMM (endpoints + UI) | M | ✅ Complete |
+| ST-V | 1 | Indicator Library — Momentum + Trend | M | ✅ Complete |
+| ST-W | 1 | Indicator Library — Volume + Structure | M | ✅ Complete |
+| ST-X | 1 | Drawing Tools — Pitchfork + Annotation | M | ✅ Complete |
+| ST-Y | 1 | AIScorePanel | L | ✅ Complete |
+| ST-Z | 1 | BacktestPanel Sub-Components | M | ✅ Complete |
+| ST-I | 2 | VPVR Auto-Fetch Wiring | S | ✅ Complete |
+| ST-R | 2 | Real-Time Indicator Streaming (SSE) | L | ✅ Complete |
+| ST-S | 2 | Portfolio Import (dedup + broker stub) | S | ✅ Complete |
+| ST-T | 2 | Multi-User Workspace UI | M | ✅ Complete |
+| ST-U | 2 | Tick Data Recorder + Replay | M | ✅ Complete |
+| ST-AA | 2 | Screener Presets DB Persistence | S | ✅ Complete |
+| ST-AB | 2 | News Adapters — Reddit + SEC EDGAR | M | ✅ Complete |
+| ST-AC | 2 | Indicator Library — Extended (Ichimoku, SuperTrend) | L | ✅ Complete |
+| ST-AD | 2 | order_book_snapshots Hypertable | M | ✅ Complete |
+| ST-AE | 2 | Market Snapshot Enrichment | M | ✅ Complete |
+| ST-N | 3 | Load Tests — CI Integration | S | ✅ Complete |
+| ST-AF | 3 | Architecture Documentation | S | ✅ Complete |
+| ST-AG | 3 | Chart Types — Renko + Line Break | M | ✅ Complete |
+| ST-AH | 3 | ADR Expansion (ADR-006/007/008) | S | ✅ Complete |
+| ST-AI | 3 | K8s Manifests Completeness Audit | M | ✅ Complete |
+| ST-AJ | 3 | Terraform Variable Completion | S | ✅ Complete |
 | DEFER-1 | 4 | C++ Execution Engine / OMS | XL | Deferred |
 | DEFER-2 | 4 | FIX Protocol Integration | XL | Deferred |
 | DEFER-3 | 4 | Live Order Routing (Real Brokerage) | XL | Deferred |

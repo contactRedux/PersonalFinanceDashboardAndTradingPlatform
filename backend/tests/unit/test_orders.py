@@ -562,6 +562,7 @@ class TestHandleOrderFill:
 
         session = AsyncMock()
         session.execute = AsyncMock(side_effect=[portfolio_result, position_result])
+        session.add = MagicMock()  # sync method — not awaitable
         session.commit = AsyncMock()
 
         session_ctx = AsyncMock()

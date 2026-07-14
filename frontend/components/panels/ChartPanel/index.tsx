@@ -35,6 +35,7 @@ import { useFibonacciTool } from "./useFibonacciTool";
 import { useTrendlineTool } from "./useTrendlineTool";
 import { usePitchforkTool } from "./usePitchforkTool";
 import { useAnnotationTool } from "./useAnnotationTool";
+import { useRegimeOverlay } from "@/hooks/useRegimeOverlay";
 
 // ─── ChartCanvas imperative handle ──────────────────────────────────────────
 
@@ -84,6 +85,8 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
   const latestQuote: Quote | undefined = useMarketDataStore(
     (s) => s.quotes[config.symbol]
   );
+
+  const { regime } = useRegimeOverlay(config.symbol);
 
   // Drawing tools
   const fib = useFibonacciTool(chartRef, seriesRef);
@@ -251,6 +254,18 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
   return (
     <Panel id={panelId} title={`${config.symbol} · ${config.timeframe.toUpperCase()}`}>
       {toolbar}
+      {regime && (
+        <div style={styles.regimeBadge}>
+          <span style={{
+            ...styles.regimePill,
+            background: regime === "bull" ? "rgba(0,208,132,0.15)" : regime === "bear" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
+            color: regime === "bull" ? "#00d084" : regime === "bear" ? "#ef4444" : "#f59e0b",
+            border: `1px solid ${regime === "bull" ? "#00d084" : regime === "bear" ? "#ef4444" : "#f59e0b"}`,
+          }}>
+            {regime === "bull" ? "🟢 Bull Regime" : regime === "bear" ? "🔴 Bear Regime" : "🟡 Sideways"}
+          </span>
+        </div>
+      )}
       {loading && (
         <div style={styles.state}>
           <span style={styles.loadingText}>Loading {config.symbol}…</span>
@@ -295,4 +310,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     color: "var(--color-accent-red)",
   },
+  regimeBadge: { padding: "2px 8px" },
+  regimePill: { fontSize: 10, borderRadius: 10, padding: "1px 8px", fontFamily: "var(--font-mono)" },
 };

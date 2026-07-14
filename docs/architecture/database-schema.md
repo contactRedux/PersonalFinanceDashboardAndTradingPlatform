@@ -39,6 +39,21 @@ Partitioned by `time` with **1-day chunks**. Primary access patterns:
 
 **Continuous aggregate:** `ohlcv_daily` — auto-materialised daily OHLCV from `1m` bars. Refreshed hourly with a 1-hour lag.
 
+### `order_book_snapshots` — Level 2 order book snapshots (hypertable)
+
+Partitioned by `time` with **1-day chunks**. Stores the full bid/ask ladder at each snapshot moment.
+
+| Column | Type | Notes |
+|---|---|---|
+| `time` | `TIMESTAMPTZ` | Snapshot timestamp (UTC) — partition key |
+| `symbol` | `TEXT` | Ticker symbol e.g. `AAPL`, `BTC-USD` |
+| `bids` | `JSONB` | Array of `[price, size]` bid levels, best bid first |
+| `asks` | `JSONB` | Array of `[price, size]` ask levels, best ask first |
+| `mid_price` | `NUMERIC(18, 8)` | `(best_bid + best_ask) / 2`, nullable |
+| `spread` | `NUMERIC(18, 8)` | `best_ask − best_bid`, nullable |
+
+**Index:** `idx_obs_symbol_time ON order_book_snapshots (symbol, time DESC)` — primary lookup pattern.
+
 ### `ticks` — Individual trade prints (hypertable)
 
 Partitioned by `time` with **1-hour chunks**.
