@@ -10,14 +10,16 @@ export type OrderSide = "B" | "S" | "U";
 export interface Quote {
   symbol: string;
   price: number;
-  bid: number;
-  ask: number;
-  bid_size?: number;
-  ask_size?: number;
-  volume: number;
-  change: number;
-  change_pct: number;
+  bid?: number | null;
+  ask?: number | null;
+  bid_size?: number | null;
+  ask_size?: number | null;
+  volume?: number | null;
+  change?: number | null;
+  change_pct?: number | null;
   timestamp: string;
+  provider?: string | null;
+  asset_class?: string | null;
 }
 
 export interface OHLCVBar {

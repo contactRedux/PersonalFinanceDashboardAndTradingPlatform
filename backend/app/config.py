@@ -43,8 +43,10 @@ class Settings(BaseSettings):
     mongodb_database: str = "quantnexus"
 
     # ─── Market Data Providers ────────────────────────────────────────────────
+    market_data_provider: str = "alpaca"   # alpaca | yfinance | polygon
     alpaca_api_key: str = ""
-    alpaca_secret_key: str = ""
+    alpaca_api_secret: str = ""            # preferred name (alpaca_secret_key also accepted)
+    alpaca_secret_key: str = ""            # legacy alias
     alpaca_base_url: str = "https://paper-api.alpaca.markets"
     alpaca_data_url: str = "https://data.alpaca.markets"
 

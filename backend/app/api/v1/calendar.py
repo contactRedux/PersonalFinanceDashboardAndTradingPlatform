@@ -8,9 +8,9 @@ router = APIRouter()
 
 @router.get("/events")
 async def get_calendar_events(
+    _: CurrentUser,
     start: str = Query(None),
     end: str = Query(None),
     impact: str = Query(None, description="high|medium|low"),
-    _: dict = CurrentUser,
 ):
     return {"events": [], "note": "Economic calendar in ST-10"}

@@ -7,15 +7,15 @@ router = APIRouter()
 
 
 @router.post("/run")
-async def run_screener(_: dict = CurrentUser):
+async def run_screener(_: CurrentUser):
     return {"results": [], "note": "Screener engine in ST-10"}
 
 
 @router.get("/presets")
-async def get_presets(_: dict = CurrentUser):
+async def get_presets(_: CurrentUser):
     return {"presets": []}
 
 
 @router.post("/presets")
-async def save_preset(_: dict = CurrentUser):
+async def save_preset(_: CurrentUser):
     return {"note": "Save preset in ST-10"}

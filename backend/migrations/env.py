@@ -8,21 +8,21 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
 
 # ─── Import ALL models so Alembic autogenerate can detect them ─────────────────
 from app.database import Base
 from app.models import (  # noqa: F401 — import ensures models are registered
+    alert,
+    audit_log,
+    dashboard_layout,
+    economic_event,
+    fundamental,
+    ohlcv,
+    portfolio,
     user,
     watchlist,
-    alert,
-    ohlcv,
-    fundamental,
-    portfolio,
-    economic_event,
-    dashboard_layout,
-    audit_log,
 )
+from sqlalchemy import engine_from_config, pool
 
 config = context.config
 

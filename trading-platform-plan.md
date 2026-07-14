@@ -1595,7 +1595,7 @@ Each sub-task below maps to a self-contained implementation unit.
 7. Build `TimeAndSalesPanel` with virtualized scrolling trade list
 8. Build `RiskPanel` with all ratio displays and position sizing calculator
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 ---
 

@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -26,13 +27,18 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialise shared resources on startup; cleanly shut them down."""
     from app.data.cache.redis_client import close_redis_pool, get_redis_pool
+    from app.data.ingestion.scheduler import start_scheduler, stop_scheduler
 
     logger.info("startup.begin", env=settings.app_env)
     await get_redis_pool()
     logger.info("startup.redis_ready")
 
+    start_scheduler()
+    logger.info("startup.scheduler_ready")
+
     yield  # Application runs
 
+    stop_scheduler()
     await close_redis_pool()
     logger.info("shutdown.complete")
 
@@ -57,6 +63,16 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
+
+    # ─── Validation error handler: return 422 with structured error detail ─────
+    @_app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors()},
+        )
 
     # ─── Generic error handler: never expose stack traces ─────────────────────
     @_app.exception_handler(Exception)

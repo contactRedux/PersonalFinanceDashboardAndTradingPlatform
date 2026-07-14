@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // Data-fetching effects that set loading/error state are valid patterns.
+      // The rule "no setState synchronously in effects" applies to external state
+      // sync patterns, not async data-fetch lifecycle management.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

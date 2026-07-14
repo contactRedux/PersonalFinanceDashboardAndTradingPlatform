@@ -2,18 +2,26 @@
 Auth REST endpoints:
   POST /api/v1/auth/login       — issue access + refresh tokens
   POST /api/v1/auth/refresh     — rotate refresh token
-  POST /api/v1/auth/logout      — invalidate session
+  POST /api/v1/auth/logout      — invalidate all user sessions
+  GET  /api/v1/auth/me          — return current user profile
   POST /api/v1/auth/totp/setup  — generate TOTP QR
-  POST /api/v1/auth/totp/verify — activate TOTP
+  POST /api/v1/auth/totp/verify — activate TOTP (persist to DB)
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import select, update
 
-from app.auth.jwt import create_access_token, create_refresh_token, decode_refresh_token
+from app.auth.jwt import (
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    revoke_all_user_tokens,
+)
 from app.auth.totp import generate_totp_secret, get_totp_uri, verify_totp_code
 from app.dependencies import CurrentUser, DBSession
+from app.models.user import User
 
 router = APIRouter()
 
@@ -35,13 +43,20 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    role: str
+    totp_enabled: bool
+
+
 class TOTPSetupResponse(BaseModel):
     secret: str
     uri: str
-    qr_data_url: str
 
 
 class TOTPVerifyRequest(BaseModel):
+    secret: str
     totp_code: str
 
 
@@ -53,10 +68,7 @@ async def login(body: LoginRequest, db: DBSession):
     If TOTP is enabled on the account, totp_code is also required.
     Returns short-lived access token and long-lived refresh token.
     """
-    from sqlalchemy import select
-
     from app.auth.password import verify_password
-    from app.models.user import User
 
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
@@ -113,25 +125,56 @@ async def refresh(body: RefreshRequest):
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(current_user: CurrentUser):
-    """Invalidate the current user's session in Redis."""
-    # Session invalidation implemented in ST-3 (full auth sub-task)
+    """Invalidate all refresh tokens for the current user."""
+    await revoke_all_user_tokens(current_user["sub"])
     return None
 
 
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: CurrentUser, db: DBSession):
+    """Return the currently authenticated user's profile."""
+    result = await db.execute(select(User).where(User.id == current_user["sub"]))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        role=user.role,
+        totp_enabled=user.totp_secret is not None,
+    )
+
+
 @router.post("/totp/setup", response_model=TOTPSetupResponse)
-async def totp_setup(current_user: CurrentUser, db: DBSession):
-    """Generate a new TOTP secret for the authenticated user."""
+async def totp_setup(current_user: CurrentUser):
+    """
+    Generate a new TOTP secret for the authenticated user.
+    Returns the secret and otpauth:// URI for QR code rendering.
+    The secret is NOT yet saved — call /totp/verify to activate.
+    """
     secret = generate_totp_secret()
     uri = get_totp_uri(secret, current_user["email"])
-    # Return the secret + URI so the client can render a QR code
-    return TOTPSetupResponse(secret=secret, uri=uri, qr_data_url=uri)
+    return TOTPSetupResponse(secret=secret, uri=uri)
 
 
 @router.post("/totp/verify", status_code=status.HTTP_204_NO_CONTENT)
 async def totp_verify(body: TOTPVerifyRequest, current_user: CurrentUser, db: DBSession):
     """
-    Verify a TOTP code and activate 2FA on the account.
-    The secret stored in the session from /totp/setup is used.
+    Verify the provided TOTP code against the setup secret.
+    On success, persists the secret to the user record, activating 2FA.
     """
-    # Full persistence implemented in ST-3
+    if not verify_totp_code(body.secret, body.totp_code):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid TOTP code. Check your authenticator app time sync.",
+        )
+    await db.execute(
+        update(User)
+        .where(User.id == current_user["sub"])
+        .values(totp_secret=body.secret)
+    )
+    await db.commit()
     return None

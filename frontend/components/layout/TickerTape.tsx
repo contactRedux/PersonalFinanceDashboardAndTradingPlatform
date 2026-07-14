@@ -46,7 +46,7 @@ export function TickerTape() {
 
 interface TickerItemProps {
   symbol: string;
-  quote?: { price: number; change_pct: number } | null;
+  quote?: { price: number; change_pct?: number | null } | null;
 }
 
 function TickerItem({ symbol, quote }: TickerItemProps) {
