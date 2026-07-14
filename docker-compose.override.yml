@@ -1,0 +1,13 @@
+# ─── Local dev overrides: hot reload, exposed debug ports ─────────────────────
+version: "3.9"
+
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      APP_ENV: development
+
+  frontend:
+    command: npm run dev
+    environment:
+      NODE_ENV: development

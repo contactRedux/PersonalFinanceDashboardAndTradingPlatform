@@ -1,0 +1,30 @@
+"""API v1 router — aggregates all REST route modules."""
+from fastapi import APIRouter
+
+from app.api.v1 import (
+    alerts,
+    auth,
+    calendar,
+    crypto,
+    macro,
+    market,
+    news,
+    options,
+    portfolio,
+    screener,
+    watchlist,
+)
+
+api_v1_router = APIRouter()
+
+api_v1_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_v1_router.include_router(market.router, prefix="/market", tags=["market"])
+api_v1_router.include_router(news.router, prefix="/news", tags=["news"])
+api_v1_router.include_router(portfolio.router, prefix="/portfolio", tags=["portfolio"])
+api_v1_router.include_router(watchlist.router, prefix="/watchlist", tags=["watchlist"])
+api_v1_router.include_router(screener.router, prefix="/screener", tags=["screener"])
+api_v1_router.include_router(options.router, prefix="/options", tags=["options"])
+api_v1_router.include_router(calendar.router, prefix="/calendar", tags=["calendar"])
+api_v1_router.include_router(macro.router, prefix="/macro", tags=["macro"])
+api_v1_router.include_router(crypto.router, prefix="/crypto", tags=["crypto"])
+api_v1_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
