@@ -16,7 +16,7 @@ from app.data.cache.redis_client import get_redis_pool
 
 settings = get_settings()
 
-REFRESH_TOKEN_PREFIX = "refresh_token:"
+REFRESH_TOKEN_PREFIX = "refresh_token:"  # nosec B105 — Redis key prefix, not a credential
 
 
 def create_access_token(claims: dict) -> str:

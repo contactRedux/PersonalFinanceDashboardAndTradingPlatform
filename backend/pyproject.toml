@@ -17,6 +17,7 @@ dependencies = [
     "openai>=2.45.0",
     "pandas>=3.0.3",
     "passlib[bcrypt]>=1.7.4",
+    "prometheus-fastapi-instrumentator>=8.0.2",
     "pydantic-settings>=2.14.2",
     "pydantic[email]>=2.13.4",
     "pymongo>=4.17.0",

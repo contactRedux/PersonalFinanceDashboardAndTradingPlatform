@@ -13,10 +13,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.v1.router import api_v1_router
 from app.api.ws.router import ws_router
 from app.config import get_settings
+from app.middleware.rate_limit import RateLimitMiddleware
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -64,6 +66,9 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
 
+    # ─── Redis-backed per-IP rate limiting ────────────────────────────────────
+    _app.add_middleware(RateLimitMiddleware)
+
     # ─── Validation error handler: return 422 with structured error detail ─────
     @_app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
@@ -96,6 +101,15 @@ def create_app() -> FastAPI:
     @_app.get("/health", tags=["health"], include_in_schema=False)
     async def health() -> dict:
         return {"status": "ok", "env": settings.app_env}
+
+    # ─── Prometheus metrics ───────────────────────────────────────────────────
+    # Exposed at /metrics — scraped by Prometheus in docker-compose.
+    Instrumentator(
+        should_group_status_codes=True,
+        should_ignore_untemplated=True,
+        should_respect_env_var=True,          # honour ENABLE_METRICS env var
+        excluded_handlers=["/health"],
+    ).instrument(_app).expose(_app, endpoint="/metrics", include_in_schema=False)
 
     return _app
 

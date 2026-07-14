@@ -1,0 +1,17 @@
+# Grafana dashboard auto-provisioning
+# Place in /etc/grafana/provisioning/dashboards/ inside the Grafana container.
+
+apiVersion: 1
+
+providers:
+  - name: "QuantNexus Dashboards"
+    orgId: 1
+    folder: "QuantNexus"
+    folderUid: "quantnexus"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

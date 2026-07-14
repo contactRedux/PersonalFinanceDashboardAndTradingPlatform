@@ -9,7 +9,7 @@ Auth REST endpoints:
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, update
 
@@ -22,6 +22,7 @@ from app.auth.jwt import (
 from app.auth.totp import generate_totp_secret, get_totp_uri, verify_totp_code
 from app.dependencies import CurrentUser, DBSession
 from app.models.user import User
+from app.services.audit.logger import write_audit_log
 
 router = APIRouter()
 
@@ -62,7 +63,7 @@ class TOTPVerifyRequest(BaseModel):
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: DBSession):
+async def login(request: Request, body: LoginRequest, db: DBSession):
     """
     Authenticate user with email + password.
     If TOTP is enabled on the account, totp_code is also required.
@@ -70,10 +71,26 @@ async def login(body: LoginRequest, db: DBSession):
     """
     from app.auth.password import verify_password
 
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("X-Real-IP", "")
+        or (request.client.host if request.client else None)
+    )
+
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
     if user is None or not verify_password(body.password, user.password_hash):
+        # Record failed login attempt (user_id may be None if email unknown)
+        await write_audit_log(
+            db,
+            user_id=user.id if user else None,
+            action="auth.login_failed",
+            resource="/api/v1/auth/login",
+            details={"email": body.email, "reason": "invalid_credentials"},
+            ip_address=client_ip,
+        )
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials.",
@@ -93,6 +110,15 @@ async def login(body: LoginRequest, db: DBSession):
                 detail="TOTP code required.",
             )
         if not verify_totp_code(user.totp_secret, body.totp_code):
+            await write_audit_log(
+                db,
+                user_id=user.id,
+                action="auth.totp_failed",
+                resource="/api/v1/auth/login",
+                details={"email": body.email},
+                ip_address=client_ip,
+            )
+            await db.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid TOTP code.",
@@ -101,6 +127,16 @@ async def login(body: LoginRequest, db: DBSession):
     claims = {"sub": str(user.id), "email": user.email, "role": user.role}
     access_token = create_access_token(claims)
     refresh_token = await create_refresh_token(claims)
+
+    await write_audit_log(
+        db,
+        user_id=user.id,
+        action="auth.login_success",
+        resource="/api/v1/auth/login",
+        details={"email": user.email, "role": user.role},
+        ip_address=client_ip,
+    )
+    await db.commit()
 
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
@@ -124,9 +160,22 @@ async def refresh(body: RefreshRequest):
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(current_user: CurrentUser):
+async def logout(request: Request, current_user: CurrentUser, db: DBSession):
     """Invalidate all refresh tokens for the current user."""
     await revoke_all_user_tokens(current_user["sub"])
+
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+    )
+    await write_audit_log(
+        db,
+        user_id=current_user["sub"],
+        action="auth.logout",
+        resource="/api/v1/auth/logout",
+        ip_address=client_ip,
+    )
+    await db.commit()
     return None
 
 
@@ -161,7 +210,12 @@ async def totp_setup(current_user: CurrentUser):
 
 
 @router.post("/totp/verify", status_code=status.HTTP_204_NO_CONTENT)
-async def totp_verify(body: TOTPVerifyRequest, current_user: CurrentUser, db: DBSession):
+async def totp_verify(
+    request: Request,
+    body: TOTPVerifyRequest,
+    current_user: CurrentUser,
+    db: DBSession,
+):
     """
     Verify the provided TOTP code against the setup secret.
     On success, persists the secret to the user record, activating 2FA.
@@ -175,6 +229,17 @@ async def totp_verify(body: TOTPVerifyRequest, current_user: CurrentUser, db: DB
         update(User)
         .where(User.id == current_user["sub"])
         .values(totp_secret=body.secret)
+    )
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+    )
+    await write_audit_log(
+        db,
+        user_id=current_user["sub"],
+        action="auth.totp_enabled",
+        resource="/api/v1/auth/totp/verify",
+        ip_address=client_ip,
     )
     await db.commit()
     return None

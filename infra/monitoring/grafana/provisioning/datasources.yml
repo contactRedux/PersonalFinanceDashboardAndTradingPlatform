@@ -1,0 +1,16 @@
+# Grafana datasource auto-provisioning
+# Place in /etc/grafana/provisioning/datasources/ inside the Grafana container.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    uid: prometheus
+    isDefault: true
+    jsonData:
+      timeInterval: "15s"
+    version: 1
+    editable: false

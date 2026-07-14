@@ -1620,7 +1620,7 @@ Each sub-task below maps to a self-contained implementation unit.
 6. Build all panel components in `frontend/src/components/panels/`
 7. Implement D3.js heat map and correlation matrix visualizations
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 ---
 
@@ -1646,7 +1646,7 @@ Each sub-task below maps to a self-contained implementation unit.
 8. Build Grafana dashboard for: request rate, WebSocket connections, Celery queue depth, DB query latency
 9. Final review of all `.env.example` entries
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 ---
 
