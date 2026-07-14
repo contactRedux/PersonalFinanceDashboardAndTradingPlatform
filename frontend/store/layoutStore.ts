@@ -61,9 +61,11 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
 interface LayoutState {
   layout: LayoutItem[];
   panels: PanelConfig[];
+  activeWorkspaceId: string | null;
   setLayout: (layout: LayoutItem[]) => void;
   togglePanel: (id: PanelId) => void;
   resetLayout: () => void;
+  setActiveWorkspaceId: (id: string | null) => void;
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -76,6 +78,7 @@ export const useLayoutStore = create<LayoutState>()(
         { id: "portfolio", visible: true, title: "Portfolio" },
         { id: "news",      visible: true, title: "News & Sentiment" },
       ],
+      activeWorkspaceId: null,
 
       setLayout: (layout) => set({ layout }),
 
@@ -87,6 +90,8 @@ export const useLayoutStore = create<LayoutState>()(
         })),
 
       resetLayout: () => set({ layout: DEFAULT_LAYOUT }),
+
+      setActiveWorkspaceId: (id) => set({ activeWorkspaceId: id }),
     }),
     { name: "quantnexus-layout" }
   )

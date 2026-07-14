@@ -281,13 +281,39 @@ async def import_portfolio_csv(
         )
 
     # Upsert into in-memory store keyed by user_id → symbol
+    # Duplicate symbols → weighted-average price, additive quantity
     user_id = current_user["sub"]
     store = _IMPORTED_POSITIONS.setdefault(user_id, [])
     existing = {p["symbol"]: i for i, p in enumerate(store)}
     for pos in positions:
-        if pos["symbol"] in existing:
-            store[existing[pos["symbol"]]] = pos
+        sym = pos["symbol"]
+        if sym in existing:
+            old = store[existing[sym]]
+            old_qty = old["quantity"]
+            old_avg = old["avg_price"]
+            new_qty = pos["quantity"]
+            new_avg = pos["avg_price"]
+            combined_qty = old_qty + new_qty
+            combined_avg = (old_avg * old_qty + new_avg * new_qty) / combined_qty
+            merged: dict[str, Any] = {**old, "quantity": combined_qty, "avg_price": combined_avg}
+            if pos.get("date_opened"):
+                merged["date_opened"] = pos["date_opened"]
+            store[existing[sym]] = merged
         else:
             store.append(pos)
 
     return {"imported": len(positions), "positions": positions}
+
+
+@router.post("/import/broker", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+async def import_broker(
+    current_user: CurrentUser,
+):
+    """Broker OAuth import — not yet implemented in production."""
+    return {
+        "status": "not_implemented",
+        "message": (
+            "Broker OAuth integration requires production credentials. Contact support."
+        ),
+        "supported_brokers": ["alpaca", "td_ameritrade", "interactive_brokers"],
+    }

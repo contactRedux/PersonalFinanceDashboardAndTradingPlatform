@@ -44,11 +44,12 @@ class BacktestRunRequest(BaseModel):
     end: str = Field("2024-01-01", description="ISO date YYYY-MM-DD")
     strategy: str = Field("sma_cross", description="Strategy name")
     params: dict = Field(default_factory=dict, description="Strategy parameters")
-    engine: str = Field("vectorized", description="vectorized | event_driven")
+    engine: str = Field("vectorized", description="vectorized | event_driven | tick_replay")
     initial_capital: float = Field(100_000.0, gt=0)
     commission: float = Field(0.001, ge=0, le=0.05)
     run_monte_carlo: bool = Field(False, description="Also run Monte Carlo simulation")
     mc_simulations: int = Field(500, ge=100, le=10_000)
+    data_source: str = Field("file", description="file | db — tick replay data source")
 
 
 class TradeSchema(BaseModel):
@@ -274,11 +275,44 @@ async def run_backtest(body: BacktestRunRequest, current_user: CurrentUser):
     strategy = _get_strategy(body.strategy, body.params)
     data = _fetch_data(body.symbol, body.timeframe, body.start, body.end)
 
-    engine_cls = VectorizedEngine if body.engine == "vectorized" else EventDrivenEngine
-    engine = engine_cls(initial_capital=body.initial_capital, commission=body.commission)
+    if body.engine == "tick_replay":
+        try:
+            from backtesting.engine.tick_replay import TickReplayEngine  # noqa: PLC0415
+        except ImportError as e:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Tick replay engine not available: {e}",
+            ) from e
+        tick_engine = TickReplayEngine(
+            initial_capital=body.initial_capital,
+            commission=body.commission,
+            data_source=body.data_source,
+        )
+        # For tick_replay, data must have timestamp/price/size columns
+        import pandas as pd  # noqa: PLC0415
+        tick_data = data.rename(
+            columns={"time": "timestamp", "open": "price", "volume": "size"}
+        ) if "timestamp" not in data.columns else data
+        if "price" not in tick_data.columns and "close" in data.columns:
+            tick_data["price"] = data["close"]
+        if "size" not in tick_data.columns and "volume" in data.columns:
+            tick_data["size"] = data["volume"]
+        try:
+            result = tick_engine.run(tick_data, strategy, symbol=body.symbol)
+            result.compute_metrics()
+        except Exception as e:  # noqa: BLE001
+            logger.error("backtest.tick_replay.error", error=str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Tick replay execution failed.",
+            ) from e
+    else:
+        engine_cls = VectorizedEngine if body.engine == "vectorized" else EventDrivenEngine
+        engine = engine_cls(initial_capital=body.initial_capital, commission=body.commission)
 
     try:
-        result = engine.run(data, strategy, symbol=body.symbol, timeframe=body.timeframe)
+        if body.engine != "tick_replay":
+            result = engine.run(data, strategy, symbol=body.symbol, timeframe=body.timeframe)
         result.compute_metrics()
     except Exception as e:  # noqa: BLE001
         logger.error("backtest.run.error", error=str(e))

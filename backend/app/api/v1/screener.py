@@ -4,16 +4,20 @@ Screener REST endpoints — full implementation.
 POST /screener/run   — evaluate filter conditions against universe
 GET  /screener/presets — return saved preset conditions
 POST /screener/presets — save a named preset
+DELETE /screener/presets/{preset_id} — delete a user's own preset
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, HTTPException, status
+from sqlalchemy import delete, select
 
-from app.dependencies import CurrentUser
+from app.dependencies import CurrentUser, DBSession
+from app.models.screener_preset import ScreenerPreset
 from app.services.screener.engine import ScreenerEngine, parse_screener_request
 from app.services.screener.universe import DEMO_UNIVERSE, SECTOR_MAP
 
@@ -110,18 +114,101 @@ async def run_screener(
 
 
 @router.get("/presets")
-async def get_presets(_: CurrentUser):
+async def get_presets(current_user: CurrentUser, db: DBSession):
     """Return all built-in and user-saved screener presets."""
-    return {"presets": BUILTIN_PRESETS}
+    user_id = current_user["sub"]
+    stmt = select(ScreenerPreset).where(ScreenerPreset.user_id == user_id)
+    result = await db.execute(stmt)
+    user_presets = result.scalars().all()
+
+    user_preset_dicts = [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "conditions": p.conditions,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "is_user_preset": True,
+        }
+        for p in user_presets
+    ]
+
+    return {"presets": BUILTIN_PRESETS + user_preset_dicts}
 
 
-@router.post("/presets")
+@router.post("/presets", status_code=status.HTTP_201_CREATED)
 async def save_preset(
-    _: CurrentUser,
+    current_user: CurrentUser,
+    db: DBSession,
     payload: dict[str, Any] = Body(...),
 ):
-    """Persist a named screener preset (stored in PostgreSQL in production)."""
-    return {"note": "User preset persistence requires PostgreSQL integration.", "received": payload}
+    """Persist a named screener preset to PostgreSQL."""
+    name = payload.get("name")
+    conditions = payload.get("conditions")
+
+    if not name or not isinstance(name, str):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Field 'name' must be a non-empty string.",
+        )
+    if not isinstance(conditions, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Field 'conditions' must be a list.",
+        )
+
+    user_id = current_user["sub"]
+    preset = ScreenerPreset(
+        user_id=uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+        name=str(name),
+        conditions=conditions,
+    )
+    db.add(preset)
+    await db.commit()
+    await db.refresh(preset)
+
+    return {
+        "id": str(preset.id),
+        "name": preset.name,
+        "conditions": preset.conditions,
+        "created_at": preset.created_at.isoformat() if preset.created_at else None,
+        "is_user_preset": True,
+    }
+
+
+@router.delete("/presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_preset(
+    preset_id: str,
+    current_user: CurrentUser,
+    db: DBSession,
+):
+    """Delete a user's own screener preset."""
+    try:
+        preset_uuid = uuid.UUID(preset_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preset not found.",
+        )
+
+    stmt = select(ScreenerPreset).where(ScreenerPreset.id == preset_uuid)
+    result = await db.execute(stmt)
+    preset = result.scalar_one_or_none()
+
+    if preset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preset not found.",
+        )
+
+    user_id = current_user["sub"]
+    if str(preset.user_id) != str(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this preset.",
+        )
+
+    await db.execute(delete(ScreenerPreset).where(ScreenerPreset.id == preset_uuid))
+    await db.commit()
 
 
 @router.get("/universe/sectors")

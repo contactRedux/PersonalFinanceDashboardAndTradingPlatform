@@ -26,6 +26,8 @@ const CHART_TYPES: { label: string; value: ChartType }[] = [
   { label: "Line", value: "line" },
   { label: "Area", value: "area" },
   { label: "Base", value: "baseline" },
+  { label: "Renko", value: "renko" },
+  { label: "LnBrk", value: "line_break" },
 ];
 
 const INDICATOR_TYPES: { label: string; type: string; defaultParams: Record<string, number> }[] = [
@@ -35,6 +37,23 @@ const INDICATOR_TYPES: { label: string; type: string; defaultParams: Record<stri
   { label: "BB", type: "bb", defaultParams: { period: 20, std_dev: 2 } },
   { label: "RSI", type: "rsi", defaultParams: { period: 14 } },
   { label: "MACD", type: "macd", defaultParams: { fast: 12, slow: 26, signal: 9 } },
+  { label: "Stoch RSI", type: "stochrsi", defaultParams: { period: 14, smooth_k: 3, smooth_d: 3 } },
+  { label: "CCI", type: "cci", defaultParams: { period: 20 } },
+  { label: "Williams %R", type: "willr", defaultParams: { period: 14 } },
+  { label: "PSAR", type: "psar", defaultParams: { step: 2, max: 20 } },
+  { label: "Donchian", type: "donchian", defaultParams: { period: 20 } },
+  { label: "Keltner", type: "keltner", defaultParams: { period: 20, multiplier: 2 } },
+  { label: "Ichimoku", type: "ichimoku", defaultParams: { tenkan: 9, kijun: 26, senkouB: 52 } },
+  { label: "SuperTrend", type: "supertrend", defaultParams: { period: 10, multiplier: 3 } },
+  { label: "TRIX", type: "trix", defaultParams: { period: 14 } },
+  { label: "ROC", type: "roc", defaultParams: { period: 12 } },
+  { label: "Ult Osc", type: "ultosc", defaultParams: { period1: 7, period2: 14, period3: 28 } },
+  { label: "A/D", type: "ad", defaultParams: {} },
+  { label: "CMF", type: "cmf", defaultParams: { period: 20 } },
+  { label: "MFI", type: "mfi", defaultParams: { period: 14 } },
+  { label: "Force", type: "force", defaultParams: { period: 13 } },
+  { label: "RVOL", type: "rvol", defaultParams: { period: 20 } },
+  { label: "Pivots", type: "pivots", defaultParams: {} },
 ];
 
 interface ChartToolbarProps {
@@ -51,8 +70,12 @@ interface ChartToolbarProps {
   // Drawing tool state
   fibActive?: boolean;
   trendActive?: boolean;
+  pitchforkActive?: boolean;
+  annotationActive?: boolean;
   onFibToggle?: () => void;
   onTrendToggle?: () => void;
+  onPitchforkToggle?: () => void;
+  onAnnotationToggle?: () => void;
   onClearDrawings?: () => void;
 }
 
@@ -69,8 +92,12 @@ export function ChartToolbar({
   onToggleIndicator,
   fibActive = false,
   trendActive = false,
+  pitchforkActive = false,
+  annotationActive = false,
   onFibToggle,
   onTrendToggle,
+  onPitchforkToggle,
+  onAnnotationToggle,
   onClearDrawings,
 }: ChartToolbarProps) {
   const [symbolInput, setSymbolInput] = useState(symbol);
@@ -228,7 +255,7 @@ export function ChartToolbar({
       )}
 
       {/* Drawing tools */}
-      {(onFibToggle || onTrendToggle) && (
+      {(onFibToggle || onTrendToggle || onPitchforkToggle || onAnnotationToggle) && (
         <>
           <div style={styles.sep} />
           <div style={styles.group}>
@@ -254,7 +281,29 @@ export function ChartToolbar({
                 Trend
               </button>
             )}
-            {onClearDrawings && (fibActive || trendActive) && (
+            {onPitchforkToggle && (
+              <button
+                style={{ ...styles.btn, ...(pitchforkActive ? styles.btnActive : {}) }}
+                onClick={onPitchforkToggle}
+                aria-label="Pitchfork tool"
+                aria-pressed={pitchforkActive}
+                title="Andrews' Pitchfork: click pivot high, pivot low, then endpoint"
+              >
+                Fork
+              </button>
+            )}
+            {onAnnotationToggle && (
+              <button
+                style={{ ...styles.btn, ...(annotationActive ? styles.btnActive : {}) }}
+                onClick={onAnnotationToggle}
+                aria-label="Annotation tool"
+                aria-pressed={annotationActive}
+                title="Annotation: click to place a price-level label"
+              >
+                Note
+              </button>
+            )}
+            {onClearDrawings && (fibActive || trendActive || pitchforkActive || annotationActive) && (
               <button
                 style={{ ...styles.btn, color: "#ef4444", borderColor: "rgba(239,68,68,0.3)" }}
                 onClick={onClearDrawings}

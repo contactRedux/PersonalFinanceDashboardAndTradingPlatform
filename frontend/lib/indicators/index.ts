@@ -279,3 +279,638 @@ export function heikinAshi(bars: OHLCBar[]): OHLCBar[] {
   }
   return result;
 }
+
+// ─── Momentum + Trend (ST-V indicators) ─────────────────────────────────────
+
+export interface StochasticRsiResult {
+  k: number[];
+  d: number[];
+}
+
+/**
+ * Stochastic RSI — RSI of RSI, smoothed with two SMAs.
+ * Returns k and d arrays of the same length as `closes` (NaN before enough data).
+ */
+export function stochasticRsi(
+  closes: number[],
+  _highs: number[],
+  _lows: number[],
+  period: number,
+  smoothK: number,
+  smoothD: number
+): StochasticRsiResult {
+  const rsiValues = rsi(closes, period);
+  const n = closes.length;
+  const rawK: number[] = new Array(n).fill(NaN);
+
+  for (let i = period * 2 - 2; i < n; i++) {
+    let minRsi = Infinity;
+    let maxRsi = -Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (!isNaN(rsiValues[j])) {
+        if (rsiValues[j] < minRsi) minRsi = rsiValues[j];
+        if (rsiValues[j] > maxRsi) maxRsi = rsiValues[j];
+      }
+    }
+    const range = maxRsi - minRsi;
+    rawK[i] = range === 0 ? 0 : ((rsiValues[i] - minRsi) / range) * 100;
+  }
+
+  const kLine = sma(rawK.filter((v) => !isNaN(v)), smoothK);
+  const dLine = sma(kLine.filter((v) => !isNaN(v)), smoothD);
+
+  const k: number[] = new Array(n).fill(NaN);
+  const d: number[] = new Array(n).fill(NaN);
+  let kIdx = 0;
+  for (let i = 0; i < n; i++) {
+    if (!isNaN(rawK[i]) && kIdx < kLine.length && !isNaN(kLine[kIdx])) {
+      k[i] = kLine[kIdx];
+      kIdx++;
+    }
+  }
+  let dIdx = 0;
+  for (let i = 0; i < n; i++) {
+    if (!isNaN(k[i]) && dIdx < dLine.length && !isNaN(dLine[dIdx])) {
+      d[i] = dLine[dIdx];
+      dIdx++;
+    }
+  }
+  return { k, d };
+}
+
+/**
+ * CCI — (Typical Price − SMA of TP) / (0.015 × Mean Deviation).
+ */
+export function cci(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period: number
+): number[] {
+  const n = closes.length;
+  const result: number[] = new Array(n).fill(NaN);
+  for (let i = period - 1; i < n; i++) {
+    let sumTP = 0;
+    const tps: number[] = [];
+    for (let j = i - period + 1; j <= i; j++) {
+      const tp = (highs[j] + lows[j] + closes[j]) / 3;
+      tps.push(tp);
+      sumTP += tp;
+    }
+    const meanTP = sumTP / period;
+    let meanDev = 0;
+    for (const tp of tps) meanDev += Math.abs(tp - meanTP);
+    meanDev /= period;
+    result[i] = meanDev === 0 ? 0 : (tps[tps.length - 1] - meanTP) / (0.015 * meanDev);
+  }
+  return result;
+}
+
+/**
+ * Williams %R — (Highest High − Close) / (Highest High − Lowest Low) × −100.
+ */
+export function williamsR(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period: number
+): number[] {
+  const n = closes.length;
+  const result: number[] = new Array(n).fill(NaN);
+  for (let i = period - 1; i < n; i++) {
+    let hh = -Infinity;
+    let ll = Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (highs[j] > hh) hh = highs[j];
+      if (lows[j] < ll) ll = lows[j];
+    }
+    const range = hh - ll;
+    result[i] = range === 0 ? -50 : ((hh - closes[i]) / range) * -100;
+  }
+  return result;
+}
+
+/**
+ * Parabolic SAR — standard Wilder SAR.
+ */
+export function parabolicSar(
+  highs: number[],
+  lows: number[],
+  step: number,
+  max: number
+): number[] {
+  const n = highs.length;
+  if (n < 2) return new Array(n).fill(NaN);
+
+  const result: number[] = new Array(n).fill(NaN);
+  let isLong = true;
+  let sar = lows[0];
+  let ep = highs[0];
+  let af = step;
+
+  result[0] = sar;
+
+  for (let i = 1; i < n; i++) {
+    const prevSar = sar;
+
+    if (isLong) {
+      sar = prevSar + af * (ep - prevSar);
+      sar = Math.min(sar, lows[i - 1], i >= 2 ? lows[i - 2] : lows[i - 1]);
+
+      if (highs[i] > ep) {
+        ep = highs[i];
+        af = Math.min(af + step, max);
+      }
+
+      if (lows[i] < sar) {
+        // Reverse to short
+        isLong = false;
+        sar = ep;
+        ep = lows[i];
+        af = step;
+      }
+    } else {
+      sar = prevSar + af * (ep - prevSar);
+      sar = Math.max(sar, highs[i - 1], i >= 2 ? highs[i - 2] : highs[i - 1]);
+
+      if (lows[i] < ep) {
+        ep = lows[i];
+        af = Math.min(af + step, max);
+      }
+
+      if (highs[i] > sar) {
+        // Reverse to long
+        isLong = true;
+        sar = ep;
+        ep = highs[i];
+        af = step;
+      }
+    }
+
+    result[i] = sar;
+  }
+  return result;
+}
+
+export interface DonchianChannelResult {
+  upper: number[];
+  lower: number[];
+  mid: number[];
+}
+
+/**
+ * Donchian Channel — rolling max high / min low, mid = (upper + lower) / 2.
+ */
+export function donchianChannel(
+  highs: number[],
+  lows: number[],
+  period: number
+): DonchianChannelResult {
+  const n = highs.length;
+  const upper: number[] = new Array(n).fill(NaN);
+  const lower: number[] = new Array(n).fill(NaN);
+  const mid: number[] = new Array(n).fill(NaN);
+  for (let i = period - 1; i < n; i++) {
+    let maxH = -Infinity;
+    let minL = Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (highs[j] > maxH) maxH = highs[j];
+      if (lows[j] < minL) minL = lows[j];
+    }
+    upper[i] = maxH;
+    lower[i] = minL;
+    mid[i] = (maxH + minL) / 2;
+  }
+  return { upper, lower, mid };
+}
+
+export interface KeltnerChannelResult {
+  upper: number[];
+  mid: number[];
+  lower: number[];
+}
+
+/**
+ * Keltner Channel — EMA ± multiplier × ATR.
+ */
+export function keltnerChannel(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  atrPeriod: number,
+  multiplier: number
+): KeltnerChannelResult {
+  const midLine = ema(closes, atrPeriod);
+  const atrValues = atr(highs, lows, closes, atrPeriod);
+  const n = closes.length;
+  const upper: number[] = new Array(n).fill(NaN);
+  const mid: number[] = new Array(n).fill(NaN);
+  const lower: number[] = new Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    if (!isNaN(midLine[i]) && !isNaN(atrValues[i])) {
+      mid[i] = midLine[i];
+      upper[i] = midLine[i] + multiplier * atrValues[i];
+      lower[i] = midLine[i] - multiplier * atrValues[i];
+    }
+  }
+  return { upper, mid, lower };
+}
+
+// ─── Extended Indicators (Sprint 7 ST-AC) ─────────────────────────────────────
+
+export interface IchimokuCloudResult {
+  tenkan: number[];
+  kijun: number[];
+  senkouA: number[];
+  senkouB: number[];
+  chikou: number[];
+}
+
+/** Rolling max of an array over a lookback window (helper). */
+function rollingMax(values: number[], period: number): number[] {
+  const result: number[] = new Array(values.length).fill(NaN);
+  for (let i = period - 1; i < values.length; i++) {
+    let max = -Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (values[j] > max) max = values[j];
+    }
+    result[i] = max;
+  }
+  return result;
+}
+
+/** Rolling min of an array over a lookback window (helper). */
+function rollingMin(values: number[], period: number): number[] {
+  const result: number[] = new Array(values.length).fill(NaN);
+  for (let i = period - 1; i < values.length; i++) {
+    let min = Infinity;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (values[j] < min) min = values[j];
+    }
+    result[i] = min;
+  }
+  return result;
+}
+
+/**
+ * Ichimoku Cloud
+ * - tenkan-sen:  (max(high, tenkanPeriod)  + min(low, tenkanPeriod))  / 2
+ * - kijun-sen:   (max(high, kijunPeriod)   + min(low, kijunPeriod))   / 2
+ * - senkou A:    (tenkan + kijun) / 2, displaced forward by `displacement` bars
+ * - senkou B:    (max(high, senkouBPeriod) + min(low, senkouBPeriod)) / 2, displaced forward
+ * - chikou:      close shifted back by `displacement` bars
+ */
+export function ichimokuCloud(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  tenkanPeriod = 9,
+  kijunPeriod = 26,
+  senkouBPeriod = 52,
+  displacement = 26
+): IchimokuCloudResult {
+  const n = closes.length;
+  const total = n + displacement;
+
+  const maxHigh = rollingMax(highs, tenkanPeriod);
+  const minLow = rollingMin(lows, tenkanPeriod);
+  const maxHighK = rollingMax(highs, kijunPeriod);
+  const minLowK = rollingMin(lows, kijunPeriod);
+  const maxHighB = rollingMax(highs, senkouBPeriod);
+  const minLowB = rollingMin(lows, senkouBPeriod);
+
+  const tenkan: number[] = new Array(n).fill(NaN);
+  const kijun: number[] = new Array(n).fill(NaN);
+  const senkouA: number[] = new Array(total).fill(NaN);
+  const senkouB: number[] = new Array(total).fill(NaN);
+  const chikou: number[] = new Array(n).fill(NaN);
+
+  for (let i = 0; i < n; i++) {
+    if (!isNaN(maxHigh[i]) && !isNaN(minLow[i])) {
+      tenkan[i] = (maxHigh[i] + minLow[i]) / 2;
+    }
+    if (!isNaN(maxHighK[i]) && !isNaN(minLowK[i])) {
+      kijun[i] = (maxHighK[i] + minLowK[i]) / 2;
+    }
+    // Senkou A & B displaced forward
+    if (!isNaN(tenkan[i]) && !isNaN(kijun[i])) {
+      senkouA[i + displacement] = (tenkan[i] + kijun[i]) / 2;
+    }
+    if (!isNaN(maxHighB[i]) && !isNaN(minLowB[i])) {
+      senkouB[i + displacement] = (maxHighB[i] + minLowB[i]) / 2;
+    }
+    // Chikou: close shifted back by displacement
+    if (i - displacement >= 0) {
+      chikou[i - displacement] = closes[i];
+    }
+  }
+
+  return { tenkan, kijun, senkouA: senkouA.slice(0, n), senkouB: senkouB.slice(0, n), chikou };
+}
+
+export interface SuperTrendResult {
+  values: number[];
+  direction: number[]; // 1 = uptrend, -1 = downtrend
+}
+
+/**
+ * SuperTrend
+ * - upperBand = ((high+low)/2) + multiplier*ATR
+ * - lowerBand = ((high+low)/2) - multiplier*ATR
+ * - direction: 1 = uptrend (green), -1 = downtrend (red)
+ */
+export function superTrend(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 10,
+  multiplier = 3
+): SuperTrendResult {
+  const n = closes.length;
+  const atrValues = atr(highs, lows, closes, period);
+  const values: number[] = new Array(n).fill(NaN);
+  const direction: number[] = new Array(n).fill(NaN);
+
+  let upperBand = NaN;
+  let lowerBand = NaN;
+  let prevUpperBand = NaN;
+  let prevLowerBand = NaN;
+  let prevDir = 1;
+
+  for (let i = period; i < n; i++) {
+    if (isNaN(atrValues[i])) continue;
+    const hl2 = (highs[i] + lows[i]) / 2;
+    const rawUpper = hl2 + multiplier * atrValues[i];
+    const rawLower = hl2 - multiplier * atrValues[i];
+
+    // Final upper band: lock in tighter of new/prev
+    upperBand = (rawUpper < prevUpperBand || closes[i - 1] > prevUpperBand) ? rawUpper : prevUpperBand;
+    // Final lower band: lock in higher of new/prev
+    lowerBand = (rawLower > prevLowerBand || closes[i - 1] < prevLowerBand) ? rawLower : prevLowerBand;
+
+    let dir: number;
+    if (closes[i] <= upperBand) {
+      dir = -1;
+    } else {
+      dir = 1;
+    }
+    if (prevDir === -1 && closes[i] > prevUpperBand) dir = 1;
+    if (prevDir === 1 && closes[i] < prevLowerBand) dir = -1;
+
+    values[i] = dir === 1 ? lowerBand : upperBand;
+    direction[i] = dir;
+    prevUpperBand = upperBand;
+    prevLowerBand = lowerBand;
+    prevDir = dir;
+  }
+
+  return { values, direction };
+}
+
+/**
+ * TRIX — triple-smoothed EMA, then 1-period Rate of Change.
+ * Returns percentage change of triple-EMA.
+ */
+export function trix(closes: number[], period: number): number[] {
+  const n = closes.length;
+  const e1 = ema(closes, period);
+  const validE1 = e1.filter((v) => !isNaN(v));
+  const e2 = ema(validE1, period);
+  const validE2 = e2.filter((v) => !isNaN(v));
+  const e3 = ema(validE2, period);
+
+  // Map e3 back into the original array length
+  const result: number[] = new Array(n).fill(NaN);
+  // e3 has validE2.length entries, aligned to the tail of the original array
+  const e3StartInN = n - e3.length;
+  for (let i = 1; i < e3.length; i++) {
+    if (!isNaN(e3[i]) && !isNaN(e3[i - 1]) && e3[i - 1] !== 0) {
+      result[e3StartInN + i] = ((e3[i] - e3[i - 1]) / e3[i - 1]) * 100;
+    }
+  }
+  return result;
+}
+
+/**
+ * Rate of Change (ROC)
+ * ROC[i] = (close[i] - close[i-period]) / close[i-period] * 100
+ */
+export function roc(closes: number[], period: number): number[] {
+  const n = closes.length;
+  const result: number[] = new Array(n).fill(NaN);
+  for (let i = period; i < n; i++) {
+    if (closes[i - period] !== 0) {
+      result[i] = ((closes[i] - closes[i - period]) / closes[i - period]) * 100;
+    }
+  }
+  return result;
+}
+
+/**
+ * Ultimate Oscillator
+ * Buying pressure (BP) = close - min(low, prev_close)
+ * True range (TR) = max(high, prev_close) - min(low, prev_close)
+ * Weighted average over 3 periods with 4:2:1 ratio
+ */
+export function ultimateOscillator(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period1 = 7,
+  period2 = 14,
+  period3 = 28
+): number[] {
+  const n = closes.length;
+  const result: number[] = new Array(n).fill(NaN);
+
+  const bp: number[] = new Array(n).fill(NaN);
+  const tr: number[] = new Array(n).fill(NaN);
+
+  for (let i = 1; i < n; i++) {
+    const prevClose = closes[i - 1];
+    const trueHigh = Math.max(highs[i], prevClose);
+    const trueLow = Math.min(lows[i], prevClose);
+    bp[i] = closes[i] - trueLow;
+    tr[i] = trueHigh - trueLow;
+  }
+
+  const minPeriod = Math.max(period1, period2, period3);
+  for (let i = minPeriod; i < n; i++) {
+    let sumBP1 = 0, sumTR1 = 0;
+    let sumBP2 = 0, sumTR2 = 0;
+    let sumBP3 = 0, sumTR3 = 0;
+    for (let j = i - period1 + 1; j <= i; j++) { sumBP1 += bp[j]; sumTR1 += tr[j]; }
+    for (let j = i - period2 + 1; j <= i; j++) { sumBP2 += bp[j]; sumTR2 += tr[j]; }
+    for (let j = i - period3 + 1; j <= i; j++) { sumBP3 += bp[j]; sumTR3 += tr[j]; }
+    if (sumTR1 === 0 || sumTR2 === 0 || sumTR3 === 0) continue;
+    const avg1 = sumBP1 / sumTR1;
+    const avg2 = sumBP2 / sumTR2;
+    const avg3 = sumBP3 / sumTR3;
+    result[i] = (100 * (4 * avg1 + 2 * avg2 + avg3)) / 7;
+  }
+  return result;
+}
+
+// ─── Volume & Structure (ST-W indicators) ────────────────────────────────────
+
+/**
+ * Accumulation/Distribution Line.
+ * CLV = ((close - low) - (high - close)) / (high - low)
+ * AD[i] = AD[i-1] + CLV[i] * volume[i]
+ */
+export function accumulationDistribution(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[]
+): number[] {
+  const n = closes.length;
+  const result: number[] = new Array(n).fill(NaN);
+  let ad = 0;
+  for (let i = 0; i < n; i++) {
+    const hl = highs[i] - lows[i];
+    const clv = hl === 0 ? 0 : ((closes[i] - lows[i]) - (highs[i] - closes[i])) / hl;
+    ad += clv * volumes[i];
+    result[i] = ad;
+  }
+  return result;
+}
+
+/**
+ * Chaikin Money Flow — sum(CLV*vol, period) / sum(vol, period).
+ */
+export function cmf(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+  period: number
+): number[] {
+  const n = closes.length;
+  const result: number[] = new Array(n).fill(NaN);
+  for (let i = period - 1; i < n; i++) {
+    let sumClvVol = 0;
+    let sumVol = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      const hl = highs[j] - lows[j];
+      const clv = hl === 0 ? 0 : ((closes[j] - lows[j]) - (highs[j] - closes[j])) / hl;
+      sumClvVol += clv * volumes[j];
+      sumVol += volumes[j];
+    }
+    result[i] = sumVol === 0 ? 0 : sumClvVol / sumVol;
+  }
+  return result;
+}
+
+/**
+ * Money Flow Index — 100 - (100 / (1 + positive_mf / negative_mf)).
+ */
+export function mfi(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+  period: number
+): number[] {
+  const n = closes.length;
+  const result: number[] = new Array(n).fill(NaN);
+  const typicalPrices = closes.map((c, i) => (highs[i] + lows[i] + c) / 3);
+  const rawMF = typicalPrices.map((tp, i) => tp * volumes[i]);
+
+  for (let i = period; i < n; i++) {
+    let posMF = 0;
+    let negMF = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (typicalPrices[j] > typicalPrices[j - 1]) {
+        posMF += rawMF[j];
+      } else if (typicalPrices[j] < typicalPrices[j - 1]) {
+        negMF += rawMF[j];
+      }
+    }
+    if (negMF === 0) {
+      result[i] = 100;
+    } else {
+      result[i] = 100 - 100 / (1 + posMF / negMF);
+    }
+  }
+  return result;
+}
+
+/**
+ * Force Index — EMA of (close[i] - close[i-1]) * volume[i].
+ */
+export function forceIndex(
+  closes: number[],
+  volumes: number[],
+  period: number
+): number[] {
+  const n = closes.length;
+  const rawFI: number[] = new Array(n).fill(NaN);
+  for (let i = 1; i < n; i++) {
+    rawFI[i] = (closes[i] - closes[i - 1]) * volumes[i];
+  }
+  // EMA of rawFI values starting from index 1
+  const validFI = rawFI.slice(1);
+  const emaFI = ema(validFI, period);
+  const result: number[] = new Array(n).fill(NaN);
+  for (let i = 0; i < emaFI.length; i++) {
+    result[i + 1] = emaFI[i];
+  }
+  return result;
+}
+
+/**
+ * Relative Volume — volume[i] / SMA(volume, period)[i].
+ */
+export function rvol(volumes: number[], period: number): number[] {
+  const smaVol = sma(volumes, period);
+  return volumes.map((v, i) =>
+    isNaN(smaVol[i]) || smaVol[i] === 0 ? NaN : v / smaVol[i]
+  );
+}
+
+export interface PivotPointsResult {
+  P: number[];
+  R1: number[];
+  R2: number[];
+  R3: number[];
+  S1: number[];
+  S2: number[];
+  S3: number[];
+}
+
+/**
+ * Standard floor pivot points.
+ * Each bar's pivot is computed from the previous bar's H, L, C.
+ * First bar has NaN for all levels.
+ */
+export function pivotPoints(
+  highs: number[],
+  lows: number[],
+  closes: number[]
+): PivotPointsResult {
+  const n = closes.length;
+  const P: number[] = new Array(n).fill(NaN);
+  const R1: number[] = new Array(n).fill(NaN);
+  const R2: number[] = new Array(n).fill(NaN);
+  const R3: number[] = new Array(n).fill(NaN);
+  const S1: number[] = new Array(n).fill(NaN);
+  const S2: number[] = new Array(n).fill(NaN);
+  const S3: number[] = new Array(n).fill(NaN);
+
+  for (let i = 1; i < n; i++) {
+    const H = highs[i - 1];
+    const L = lows[i - 1];
+    const C = closes[i - 1];
+    const p = (H + L + C) / 3;
+    P[i] = p;
+    R1[i] = 2 * p - L;
+    S1[i] = 2 * p - H;
+    R2[i] = p + (H - L);
+    S2[i] = p - (H - L);
+    R3[i] = H + 2 * (p - L);
+    S3[i] = L - 2 * (H - p);
+  }
+
+  return { P, R1, R2, R3, S1, S2, S3 };
+}

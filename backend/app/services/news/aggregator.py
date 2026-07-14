@@ -12,8 +12,13 @@ import structlog
 
 from app.services.news.benzinga import fetch_benzinga_news
 from app.services.news.newsapi import fetch_financial_news
+from app.services.news.reddit import RedditAdapter
+from app.services.news.sec_edgar import SECEdgarAdapter
 
 logger = structlog.get_logger(__name__)
+
+_reddit = RedditAdapter()
+_sec_edgar = SECEdgarAdapter()
 
 
 def _article_fingerprint(headline: str, source: str) -> str:
@@ -31,14 +36,36 @@ async def fetch_and_aggregate(
     Fetch from all configured sources, deduplicate, and return a merged list
     sorted by publication time (newest first).
     """
-    # Fetch from both sources concurrently
     import asyncio
+
+    ticker = symbols[0] if symbols else ""
+
+    async def _empty() -> list[dict]:
+        return []
 
     benzinga_task = asyncio.create_task(fetch_benzinga_news(symbols=symbols, from_hours=from_hours))
     newsapi_task = asyncio.create_task(fetch_financial_news(from_hours=from_hours))
-    benzinga_articles, newsapi_articles = await asyncio.gather(benzinga_task, newsapi_task)
+    reddit_task = asyncio.create_task(
+        _reddit.get_news(ticker, limit=10) if ticker else _empty()
+    )
+    sec_task = asyncio.create_task(
+        _sec_edgar.get_news(ticker, limit=5) if ticker else _empty()
+    )
 
-    all_articles = benzinga_articles + newsapi_articles
+    benzinga_articles, newsapi_articles, reddit_articles, sec_articles = await asyncio.gather(
+        benzinga_task, newsapi_task, reddit_task, sec_task
+    )
+
+    # Normalise reddit/sec items to same shape as benzinga/newsapi
+    for item in reddit_articles:
+        item.setdefault("headline", item.get("title", ""))
+        item.setdefault("published_at", item.get("created_at", datetime.now(UTC).isoformat()))
+
+    for item in sec_articles:
+        item.setdefault("headline", item.get("title", ""))
+        item.setdefault("published_at", item.get("filed_at") or item.get("created_at", datetime.now(UTC).isoformat()))
+
+    all_articles = benzinga_articles + newsapi_articles + reddit_articles + sec_articles
 
     # Deduplicate by fingerprint
     seen: set[str] = set()

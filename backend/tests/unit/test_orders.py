@@ -528,3 +528,177 @@ class TestModifyOrderEndpoint:
         assert response.quantity == 20.0
         assert response.limit_price == 155.0
         db.commit.assert_called_once()
+
+
+# ─── handle_order_fill task ───────────────────────────────────────────────────
+
+
+class TestHandleOrderFill:
+    """Tests for the handle_order_fill Celery task (_apply_fill async helper)."""
+
+    @pytest.mark.asyncio
+    async def test_buy_fill_opens_new_position(self) -> None:
+        """A buy fill with no existing position creates a new long position."""
+        from decimal import Decimal  # noqa: PLC0415
+        from unittest.mock import AsyncMock, MagicMock  # noqa: PLC0415
+
+        from app.tasks.fill_tasks import _apply_fill  # noqa: PLC0415
+
+        import uuid  # noqa: PLC0415
+
+        uid = uuid.uuid4()
+        pid = uuid.uuid4()
+
+        # Mock portfolio
+        portfolio = MagicMock()
+        portfolio.id = pid
+
+        # No existing position
+        portfolio_result = MagicMock()
+        portfolio_result.scalar_one_or_none.return_value = portfolio
+
+        position_result = MagicMock()
+        position_result.scalar_one_or_none.return_value = None
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[portfolio_result, position_result])
+        session.commit = AsyncMock()
+
+        session_ctx = AsyncMock()
+        session_ctx.__aenter__ = AsyncMock(return_value=session)
+        session_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        from unittest.mock import patch  # noqa: PLC0415
+
+        with patch("app.tasks.fill_tasks.AsyncSessionLocal", return_value=session_ctx):
+            result = await _apply_fill("AAPL", "buy", 10.0, 150.0, str(uid))
+
+        assert result["action"] == "opened"
+        assert result["symbol"] == "AAPL"
+        session.add.assert_called_once()
+        session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sell_fill_closes_position_when_qty_reaches_zero(self) -> None:
+        """A sell fill that exhausts quantity marks the position closed."""
+        from decimal import Decimal  # noqa: PLC0415
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+        import uuid  # noqa: PLC0415
+
+        from app.models.portfolio import Position  # noqa: PLC0415
+        from app.tasks.fill_tasks import _apply_fill  # noqa: PLC0415
+
+        uid = uuid.uuid4()
+        pid = uuid.uuid4()
+
+        portfolio = MagicMock()
+        portfolio.id = pid
+
+        position = Position(
+            id=uuid.uuid4(),
+            portfolio_id=pid,
+            symbol="AAPL",
+            asset_class="equity",
+            side="long",
+            quantity=Decimal("10"),
+            avg_entry_price=Decimal("150.00"),
+            is_open=True,
+        )
+
+        portfolio_result = MagicMock()
+        portfolio_result.scalar_one_or_none.return_value = portfolio
+
+        position_result = MagicMock()
+        position_result.scalar_one_or_none.return_value = position
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[portfolio_result, position_result])
+        session.commit = AsyncMock()
+
+        session_ctx = AsyncMock()
+        session_ctx.__aenter__ = AsyncMock(return_value=session)
+        session_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.tasks.fill_tasks.AsyncSessionLocal", return_value=session_ctx):
+            result = await _apply_fill("AAPL", "sell", 10.0, 160.0, str(uid))
+
+        assert result["action"] == "closed"
+        assert position.is_open is False
+        assert position.quantity == Decimal("0")
+
+    @pytest.mark.asyncio
+    async def test_buy_fill_averages_into_existing_position(self) -> None:
+        """A buy fill into an existing position updates quantity and avg price."""
+        from decimal import Decimal  # noqa: PLC0415
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+        import uuid  # noqa: PLC0415
+
+        from app.models.portfolio import Position  # noqa: PLC0415
+        from app.tasks.fill_tasks import _apply_fill  # noqa: PLC0415
+
+        uid = uuid.uuid4()
+        pid = uuid.uuid4()
+
+        portfolio = MagicMock()
+        portfolio.id = pid
+
+        position = Position(
+            id=uuid.uuid4(),
+            portfolio_id=pid,
+            symbol="MSFT",
+            asset_class="equity",
+            side="long",
+            quantity=Decimal("5"),
+            avg_entry_price=Decimal("400.00"),
+            is_open=True,
+        )
+
+        portfolio_result = MagicMock()
+        portfolio_result.scalar_one_or_none.return_value = portfolio
+
+        position_result = MagicMock()
+        position_result.scalar_one_or_none.return_value = position
+
+        session = AsyncMock()
+        session.execute = AsyncMock(side_effect=[portfolio_result, position_result])
+        session.commit = AsyncMock()
+
+        session_ctx = AsyncMock()
+        session_ctx.__aenter__ = AsyncMock(return_value=session)
+        session_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.tasks.fill_tasks.AsyncSessionLocal", return_value=session_ctx):
+            result = await _apply_fill("MSFT", "buy", 5.0, 420.0, str(uid))
+
+        assert result["action"] == "updated"
+        assert position.quantity == Decimal("10")
+        # avg = (5*400 + 5*420) / 10 = 410
+        from decimal import Decimal as D  # noqa: PLC0415
+        assert position.avg_entry_price == D("410.0")
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_portfolio_found(self) -> None:
+        """When the user has no portfolio, returns skipped without error."""
+        from unittest.mock import AsyncMock, MagicMock, patch  # noqa: PLC0415
+        import uuid  # noqa: PLC0415
+
+        from app.tasks.fill_tasks import _apply_fill  # noqa: PLC0415
+
+        uid = uuid.uuid4()
+
+        portfolio_result = MagicMock()
+        portfolio_result.scalar_one_or_none.return_value = None
+
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=portfolio_result)
+
+        session_ctx = AsyncMock()
+        session_ctx.__aenter__ = AsyncMock(return_value=session)
+        session_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.tasks.fill_tasks.AsyncSessionLocal", return_value=session_ctx):
+            result = await _apply_fill("TSLA", "buy", 1.0, 200.0, str(uid))
+
+        assert result["action"] == "skipped"
+        assert result["symbol"] == "TSLA"
+        session.commit.assert_not_called()

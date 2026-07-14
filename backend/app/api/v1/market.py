@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data.cache.quote_cache import get_quotes, set_quote
-from app.dependencies import CurrentUser
+from app.dependencies import CurrentUser, get_db
 from app.services.market_data.router import get_provider
 
 router = APIRouter()
@@ -39,7 +41,61 @@ class BarResponse(BaseModel):
     vwap: float | None = None
 
 
+class TickRecord(BaseModel):
+    time: str
+    price: float
+    size: float
+    side: str | None = None
+
+
+class TicksResponse(BaseModel):
+    symbol: str
+    ticks: list[TickRecord]
+    count: int
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
+@router.get("/ticks/{symbol}", response_model=TicksResponse)
+async def get_ticks(
+    symbol: str,
+    _: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    start: str | None = Query(None, description="ISO8601 start datetime"),
+    end: str | None = Query(None, description="ISO8601 end datetime"),
+    limit: int = Query(1000, ge=1, le=10000),
+):
+    """Return tick data for a symbol from the ticks hypertable."""
+    sym = symbol.upper()
+    try:
+        import sqlalchemy as sa  # noqa: PLC0415
+
+        start_dt = datetime.fromisoformat(start) if start else datetime(2000, 1, 1, tzinfo=UTC)
+        end_dt = datetime.fromisoformat(end) if end else datetime.now(UTC)
+
+        sql = sa.text(
+            "SELECT time, symbol, price, size, side FROM ticks"
+            " WHERE symbol = :symbol AND time BETWEEN :start AND :end"
+            " ORDER BY time DESC LIMIT :limit"
+        )
+        result = await db.execute(
+            sql,
+            {"symbol": sym, "start": start_dt, "end": end_dt, "limit": limit},
+        )
+        rows = result.fetchall()
+        ticks = [
+            TickRecord(
+                time=row.time.isoformat() if hasattr(row.time, "isoformat") else str(row.time),
+                price=float(row.price),
+                size=float(row.size),
+                side=row.side,
+            )
+            for row in rows
+        ]
+        return TicksResponse(symbol=sym, ticks=ticks, count=len(ticks))
+    except Exception:  # noqa: BLE001
+        return TicksResponse(symbol=sym, ticks=[], count=0)
+
+
 @router.get("/quotes")
 async def get_batch_quotes(
     _: CurrentUser,
@@ -65,6 +121,96 @@ async def get_batch_quotes(
     return {"quotes": cached}
 
 
+# ─── Chart transform helpers ──────────────────────────────────────────────────
+
+
+def _to_renko(bars: list, brick_size: float) -> list[dict]:
+    """Standard renko: new brick when price moves brick_size from last close."""
+    if not bars or brick_size <= 0:
+        return []
+    result: list[dict] = []
+    last_close = float(bars[0].close)
+    for bar in bars[1:]:
+        close = float(bar.close)
+        time_str = bar.time.isoformat()
+        while abs(close - last_close) >= brick_size:
+            if close > last_close:
+                open_ = last_close
+                new_close = last_close + brick_size
+            else:
+                open_ = last_close
+                new_close = last_close - brick_size
+            result.append({
+                "time": time_str,
+                "open": round(open_, 8),
+                "high": round(max(open_, new_close), 8),
+                "low": round(min(open_, new_close), 8),
+                "close": round(new_close, 8),
+                "volume": float(bar.volume),
+                "vwap": None,
+            })
+            last_close = new_close
+    if not result:
+        b = bars[-1]
+        result.append({
+            "time": b.time.isoformat(),
+            "open": float(b.open),
+            "high": float(b.high),
+            "low": float(b.low),
+            "close": float(b.close),
+            "volume": float(b.volume),
+            "vwap": None,
+        })
+    return result
+
+
+def _to_line_break(bars: list, n_lines: int = 3) -> list[dict]:
+    """N-line break: new line only when price breaks beyond N prior lines."""
+    if not bars:
+        return []
+    lines: list[dict] = []
+    for bar in bars:
+        close = float(bar.close)
+        time_str = bar.time.isoformat()
+        if not lines:
+            op = float(bar.open)
+            lines.append({
+                "time": time_str,
+                "open": round(op, 8),
+                "high": round(max(op, close), 8),
+                "low": round(min(op, close), 8),
+                "close": round(close, 8),
+                "volume": float(bar.volume),
+                "vwap": None,
+            })
+            continue
+        recent = lines[-n_lines:]
+        high_n = max(ln["high"] for ln in recent)
+        low_n = min(ln["low"] for ln in recent)
+        last_close = lines[-1]["close"]
+        if close > high_n:
+            lines.append({
+                "time": time_str,
+                "open": round(last_close, 8),
+                "high": round(close, 8),
+                "low": round(last_close, 8),
+                "close": round(close, 8),
+                "volume": float(bar.volume),
+                "vwap": None,
+            })
+        elif close < low_n:
+            lines.append({
+                "time": time_str,
+                "open": round(last_close, 8),
+                "high": round(last_close, 8),
+                "low": round(close, 8),
+                "close": round(close, 8),
+                "volume": float(bar.volume),
+                "vwap": None,
+            })
+    return lines
+
+
 @router.get("/bars/{symbol}")
 async def get_bars(
     symbol: str,
@@ -73,10 +219,19 @@ async def get_bars(
     start: str | None = Query(None, description="ISO datetime"),
     end: str | None = Query(None, description="ISO datetime"),
     limit: int = Query(500, ge=1, le=5000),
+    chart_type: str = Query("ohlcv", description="ohlcv|renko|line_break"),
+    brick_size: float = Query(1.0, description="Renko brick size"),
+    n_lines: int = Query(3, ge=1, le=20, description="N-line break count"),
 ):
-    """Return OHLCV bars for a symbol."""
+    """Return OHLCV bars for a symbol, optionally transformed to Renko or N-Line Break."""
     provider = get_provider()
     bars = await provider.get_bars(symbol, timeframe, start=start, end=end, limit=limit)
+    if chart_type == "renko":
+        transformed = _to_renko(bars, brick_size)
+        return {"symbol": symbol.upper(), "timeframe": timeframe, "bars": transformed, "count": len(transformed)}
+    if chart_type == "line_break":
+        transformed = _to_line_break(bars, n_lines)
+        return {"symbol": symbol.upper(), "timeframe": timeframe, "bars": transformed, "count": len(transformed)}
     return {
         "symbol": symbol.upper(),
         "timeframe": timeframe,
@@ -112,7 +267,7 @@ async def search_symbols(
 
 @router.get("/snapshot/{symbol}")
 async def get_snapshot(symbol: str, _: CurrentUser):
-    """Full snapshot: quote + provider info."""
+    """Full snapshot: quote + fundamentals + sentiment + latest_news."""
     sym = symbol.upper()
     cached = await get_quotes([sym])
     quote = cached.get(sym)
@@ -124,9 +279,54 @@ async def get_snapshot(symbol: str, _: CurrentUser):
             quote = live.to_dict()
             await set_quote(sym, quote)
 
+    # ── Fundamentals from yfinance ────────────────────────────────────────────
+    fundamentals: dict = {}
+    try:
+        import yfinance as yf  # noqa: PLC0415
+
+        info = await asyncio.to_thread(lambda: yf.Ticker(sym).info)
+        fundamentals = {
+            "pe_ratio": info.get("trailingPE"),
+            "market_cap": info.get("marketCap"),
+            "week_52_high": info.get("fiftyTwoWeekHigh"),
+            "week_52_low": info.get("fiftyTwoWeekLow"),
+        }
+    except Exception:  # noqa: BLE001
+        fundamentals = {}
+
+    # ── FinBERT sentiment (latest scored article headline) ────────────────────
+    sentiment: dict = {}
+    try:
+        from app.services.sentiment.finbert import score_text  # noqa: PLC0415
+
+        raw = await asyncio.to_thread(score_text, sym)
+        label = raw.get("label", "neutral")
+        conf = float(raw.get("confidence", 0.5))
+        if label == "bullish":
+            sentiment = {"positive": conf, "neutral": 1 - conf, "negative": 0.0}
+        elif label == "bearish":
+            sentiment = {"positive": 0.0, "neutral": 1 - conf, "negative": conf}
+        else:
+            sentiment = {"positive": 0.0, "neutral": 1.0, "negative": 0.0}
+    except Exception:  # noqa: BLE001
+        sentiment = {}
+
+    # ── Latest news items ─────────────────────────────────────────────────────
+    latest_news: list[dict] = []
+    try:
+        from app.services.news.aggregator import fetch_and_aggregate  # noqa: PLC0415
+
+        articles = await fetch_and_aggregate(symbols=[sym], from_hours=24, max_articles=3)
+        latest_news = articles[:3]
+    except Exception:  # noqa: BLE001
+        latest_news = []
+
     return {
         "symbol": sym,
         "quote": quote,
+        "fundamentals": fundamentals,
+        "sentiment": sentiment,
+        "latest_news": latest_news,
         "timestamp": datetime.now(UTC).isoformat(),
     }
 

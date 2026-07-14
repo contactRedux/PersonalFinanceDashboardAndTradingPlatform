@@ -7,8 +7,10 @@ import { persist } from "zustand/middleware";
 import type { Timeframe } from "@/types/market";
 import type { FibDrawing } from "@/components/panels/ChartPanel/useFibonacciTool";
 import type { TrendlineDrawing } from "@/components/panels/ChartPanel/useTrendlineTool";
+import type { PitchforkDrawing } from "@/components/panels/ChartPanel/usePitchforkTool";
+import type { AnnotationDrawing } from "@/components/panels/ChartPanel/useAnnotationTool";
 
-export type ChartType = "candlestick" | "heikin_ashi" | "line" | "area" | "bar" | "baseline";
+export type ChartType = "candlestick" | "heikin_ashi" | "line" | "area" | "bar" | "baseline" | "renko" | "line_break";
 
 export interface IndicatorConfig {
   id: string;
@@ -20,6 +22,8 @@ export interface IndicatorConfig {
 export interface PanelDrawings {
   fib: FibDrawing[];
   trendline: TrendlineDrawing[];
+  pitchfork: PitchforkDrawing[];
+  annotations: AnnotationDrawing[];
 }
 
 export interface PanelChartConfig {
@@ -47,7 +51,7 @@ const defaultConfig = (): PanelChartConfig => ({
   timeframe: "1d",
   chartType: "candlestick",
   indicators: [],
-  drawings: { fib: [], trendline: [] },
+  drawings: { fib: [], trendline: [], pitchfork: [], annotations: [] },
 });
 
 export const useChartStore = create<ChartState>()(

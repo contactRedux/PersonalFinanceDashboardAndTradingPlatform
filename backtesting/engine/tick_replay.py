@@ -21,9 +21,80 @@ Usage::
 
 from __future__ import annotations
 
+import asyncio
+import logging
+
 import pandas as pd
 
 from backtesting.engine.base import BacktestResult, Trade
+
+logger = logging.getLogger(__name__)
+
+
+async def _load_ticks_from_db(
+    symbol: str,
+    start: str,
+    end: str,
+    dsn: str | None = None,
+) -> pd.DataFrame:
+    """
+    Load tick data from PostgreSQL using asyncpg (direct, no SQLAlchemy).
+
+    Parameters
+    ----------
+    symbol : str
+        Ticker symbol (uppercased).
+    start : str
+        ISO8601 start datetime string.
+    end : str
+        ISO8601 end datetime string.
+    dsn : str | None
+        PostgreSQL DSN; falls back to DATABASE_URL env var.
+
+    Returns
+    -------
+    pd.DataFrame with columns: timestamp, price, size, side
+    """
+    import os  # noqa: PLC0415
+
+    try:
+        import asyncpg  # noqa: PLC0415
+    except ImportError as exc:
+        raise RuntimeError("asyncpg is required for data_source='db'") from exc
+
+    db_url = dsn or os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        raise RuntimeError("DATABASE_URL is not set; cannot load ticks from DB")
+
+    # asyncpg uses postgres:// scheme
+    pg_dsn = db_url.replace("postgresql+asyncpg://", "postgresql://").replace(
+        "postgresql+psycopg2://", "postgresql://"
+    )
+
+    conn = await asyncpg.connect(pg_dsn)
+    try:
+        rows = await conn.fetch(
+            "SELECT time, price, size, side FROM ticks"
+            " WHERE symbol = $1 AND time BETWEEN $2 AND $3"
+            " ORDER BY time ASC",
+            symbol,
+            start,
+            end,
+        )
+    finally:
+        await conn.close()
+
+    if not rows:
+        return pd.DataFrame(columns=["timestamp", "price", "size", "side"])
+
+    return pd.DataFrame(
+        {
+            "timestamp": [r["time"] for r in rows],
+            "price": [float(r["price"]) for r in rows],
+            "size": [float(r["size"]) for r in rows],
+            "side": [r["side"] for r in rows],
+        }
+    )
 
 
 class TickReplayEngine:
@@ -38,6 +109,9 @@ class TickReplayEngine:
         Starting capital in USD.
     commission : float
         One-way commission as a fraction of trade value.
+    data_source : str
+        ``"file"`` (default) — ticks passed directly to :meth:`run`.
+        ``"db"``             — load ticks from PostgreSQL via asyncpg.
     """
 
     def __init__(
@@ -45,19 +119,27 @@ class TickReplayEngine:
         speed_multiplier: float = 1.0,
         initial_capital: float = 100_000.0,
         commission: float = 0.001,
+        data_source: str = "file",
     ) -> None:
         self.speed_multiplier = speed_multiplier
         self.initial_capital = initial_capital
         self.commission = commission
+        self.data_source = data_source
 
     def run(
         self,
         ticks: pd.DataFrame,
         strategy: object,
         symbol: str = "UNKNOWN",
+        start: str | None = None,
+        end: str | None = None,
     ) -> BacktestResult:
         """
         Replay ``ticks`` through ``strategy`` and return a ``BacktestResult``.
+
+        When ``data_source="db"``, ``symbol``, ``start``, and ``end`` are used
+        to load ticks from PostgreSQL (asyncpg). Falls back to the supplied
+        ``ticks`` DataFrame on any DB error.
 
         ``ticks`` must have columns: timestamp, price, size.
         ``strategy`` must implement ``on_tick(price, size) -> int``
@@ -65,6 +147,22 @@ class TickReplayEngine:
         Falls back to ``generate_signals`` on a single-column DataFrame if
         ``on_tick`` is not available.
         """
+        if self.data_source == "db" and start and end:
+            try:
+                loop = asyncio.new_event_loop()
+                try:
+                    db_ticks = loop.run_until_complete(
+                        _load_ticks_from_db(symbol.upper(), start, end)
+                    )
+                finally:
+                    loop.close()
+                if not db_ticks.empty:
+                    ticks = db_ticks
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "tick_replay: DB load failed, falling back to file data: %s", exc
+                )
+
         ticks = ticks.copy()
         for col in ("timestamp", "price", "size"):
             if col not in ticks.columns:

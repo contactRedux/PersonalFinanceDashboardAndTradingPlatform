@@ -52,12 +52,15 @@ export async function getQuotes(
 export async function getBars(
   symbol: string,
   timeframe: string,
-  options?: { start?: string; end?: string; limit?: number }
+  options?: { start?: string; end?: string; limit?: number; chart_type?: string; brick_size?: number; n_lines?: number }
 ): Promise<BarsResponse> {
   const params = new URLSearchParams({ timeframe });
   if (options?.start) params.set("start", options.start);
   if (options?.end) params.set("end", options.end);
   if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.chart_type) params.set("chart_type", options.chart_type);
+  if (options?.brick_size != null) params.set("brick_size", String(options.brick_size));
+  if (options?.n_lines != null) params.set("n_lines", String(options.n_lines));
   return apiRequest<BarsResponse>(`/market/bars/${symbol}?${params}`);
 }
 
@@ -76,4 +79,29 @@ export async function getSnapshot(
   symbol: string
 ): Promise<{ symbol: string; quote: QuoteData | null; timestamp: string }> {
   return apiRequest(`/market/snapshot/${symbol}`);
+}
+
+export interface VPVRLevelData {
+  price: number;
+  volume: number;
+  is_poc: boolean;
+  pct_of_max: number;
+}
+
+export interface VPVRResponse {
+  symbol: string;
+  price_levels: VPVRLevelData[];
+  poc: number | null;
+}
+
+export async function getVPVR(
+  symbol: string,
+  timeframe: string,
+  options?: { start?: string; end?: string; bins?: number }
+): Promise<VPVRResponse> {
+  const params = new URLSearchParams({ timeframe });
+  if (options?.start) params.set("start", options.start);
+  if (options?.end) params.set("end", options.end);
+  if (options?.bins) params.set("bins", String(options.bins));
+  return apiRequest<VPVRResponse>(`/market/vpvr/${symbol}?${params}`);
 }

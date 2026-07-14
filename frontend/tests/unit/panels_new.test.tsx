@@ -22,6 +22,7 @@ vi.mock("@/lib/api/client", () => ({
 vi.mock("@/lib/api/market", () => ({
   getBars: vi.fn().mockResolvedValue({ bars: [] }),
   searchSymbols: vi.fn().mockResolvedValue({ results: [] }),
+  getVPVR: vi.fn().mockResolvedValue({ symbol: "AAPL", price_levels: [], poc: null }),
 }));
 
 // MultiTimeframePanel renders lightweight-charts in useEffect via dynamic import.
@@ -243,6 +244,28 @@ vi.mock("@/components/panels/ChartPanel/useTrendlineTool", () => ({
   })),
 }));
 
+vi.mock("@/components/panels/ChartPanel/usePitchforkTool", () => ({
+  usePitchforkTool: vi.fn(() => ({
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+    clear: vi.fn(),
+    removeDrawing: vi.fn(),
+    isActive: false,
+    drawings: [],
+  })),
+}));
+
+vi.mock("@/components/panels/ChartPanel/useAnnotationTool", () => ({
+  useAnnotationTool: vi.fn(() => ({
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+    clear: vi.fn(),
+    removeDrawing: vi.fn(),
+    isActive: false,
+    drawings: [],
+  })),
+}));
+
 // Also stub the store for this panel's tests — chartStore uses localStorage
 vi.mock("@/store/chartStore", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/store/chartStore")>();
@@ -255,7 +278,7 @@ vi.mock("@/store/chartStore", async (importOriginal) => {
           timeframe: "1d",
           chartType: "candlestick",
           indicators: [],
-          drawings: { fib: [], trendline: [] },
+          drawings: { fib: [], trendline: [], pitchfork: [], annotations: [] },
         },
       },
       setSymbol: vi.fn(),

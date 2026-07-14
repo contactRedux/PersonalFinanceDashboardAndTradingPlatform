@@ -6,6 +6,7 @@ Entrypoint: uvicorn app.main:app
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy import text
 
 from app.api.v1.router import api_v1_router
 from app.api.ws.router import ws_router
@@ -100,8 +102,70 @@ def create_app() -> FastAPI:
 
     # ─── Health check ─────────────────────────────────────────────────────────
     @_app.get("/health", tags=["health"], include_in_schema=False)
-    async def health() -> dict:
-        return {"status": "ok", "env": settings.app_env}
+    async def health() -> JSONResponse:
+        """
+        Always returns HTTP 200.  Individual service statuses are reported in
+        the response body so callers can detect degraded-but-alive states without
+        triggering load-balancer 5xx alarms.
+        """
+
+        async def _check_db() -> str:
+            try:
+                from app.database import engine  # noqa: PLC0415
+
+                async with asyncio.timeout(1):
+                    async with engine.connect() as conn:
+                        await conn.execute(text("SELECT 1"))
+                return "ok"
+            except Exception:  # noqa: BLE001
+                return "error"
+
+        async def _check_redis() -> str:
+            try:
+                from app.data.cache.redis_client import get_redis_pool  # noqa: PLC0415
+
+                async with asyncio.timeout(1):
+                    redis = await get_redis_pool()
+                    await redis.ping()
+                return "ok"
+            except Exception:  # noqa: BLE001
+                return "error"
+
+        async def _check_celery() -> str:
+            try:
+                import asyncio as _asyncio  # noqa: PLC0415
+
+                from celery import Celery  # noqa: PLC0415
+
+                async with asyncio.timeout(1):
+                    celery_app = Celery(broker=settings.celery_broker_url)
+                    inspect = celery_app.control.inspect(timeout=0.5)
+                    # ping() is blocking — run in executor so we don't stall the loop
+                    loop = _asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, inspect.ping)
+                    celery_app.close()
+                return "ok" if result else "error"
+            except Exception:  # noqa: BLE001
+                return "error"
+
+        db_status, redis_status, celery_status = await asyncio.gather(
+            _check_db(),
+            _check_redis(),
+            _check_celery(),
+        )
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "ok",
+                "version": "1.0.0",
+                "services": {
+                    "database": db_status,
+                    "redis": redis_status,
+                    "celery": celery_status,
+                },
+            },
+        )
 
     # ─── Prometheus metrics ───────────────────────────────────────────────────
     # Exposed at /metrics — scraped by Prometheus in docker-compose.

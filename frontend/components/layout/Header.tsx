@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { logout as apiLogout } from "@/lib/api/auth";
 import { clearTokens } from "@/lib/api/client";
+import { WorkspaceSwitcher } from "@/components/layout/WorkspaceSwitcher";
 
 /**
  * Header — top bar of the dashboard.
@@ -74,6 +75,9 @@ export function Header() {
 
   return (
     <div style={styles.header}>
+      {/* Brand / workspace switcher */}
+      <WorkspaceSwitcher />
+
       {/* Left: Symbol search */}
       <form onSubmit={handleSearchSubmit} style={styles.searchForm}>
         <span style={styles.searchIcon}>⌕</span>

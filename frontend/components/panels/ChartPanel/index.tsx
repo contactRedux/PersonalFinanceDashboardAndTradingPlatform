@@ -24,14 +24,17 @@ import { ChartCanvas } from "./ChartCanvas";
 import { ChartToolbar } from "./ChartToolbar";
 import { useChartStore } from "@/store/chartStore";
 import { useMarketDataStore } from "@/store/marketDataStore";
-import { getBars } from "@/lib/api/market";
+import { getBars, getVPVR } from "@/lib/api/market";
 import type { BarData } from "@/lib/api/market";
+import type { VPVRLevel } from "./ChartCanvas";
 import type { Timeframe } from "@/types/market";
 import type { ChartType } from "@/store/chartStore";
 import type { Quote } from "@/types/market";
 import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import { useFibonacciTool } from "./useFibonacciTool";
 import { useTrendlineTool } from "./useTrendlineTool";
+import { usePitchforkTool } from "./usePitchforkTool";
+import { useAnnotationTool } from "./useAnnotationTool";
 
 // ─── ChartCanvas imperative handle ──────────────────────────────────────────
 
@@ -63,12 +66,13 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
     timeframe: "1d" as Timeframe,
     chartType: "candlestick" as ChartType,
     indicators: [],
-    drawings: { fib: [], trendline: [] },
+    drawings: { fib: [], trendline: [], pitchfork: [], annotations: [] },
   };
 
   const [bars, setBars] = useState<BarData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [vpvr, setVpvr] = useState<VPVRLevel[] | undefined>(undefined);
 
   // Shared chart + series refs — lifted up so drawing tools can access them
   const chartRef = useRef<IChartApi | null>(null);
@@ -84,21 +88,36 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
   // Drawing tools
   const fib = useFibonacciTool(chartRef, seriesRef);
   const trendline = useTrendlineTool(chartRef, bars, seriesRef);
+  const pitchfork = usePitchforkTool(chartRef, bars, seriesRef);
+  const annotation = useAnnotationTool(chartRef, seriesRef);
 
   // Persist drawings when they change
   useEffect(() => {
     if (setDrawings) {
-      setDrawings(panelId, { fib: fib.drawings, trendline: trendline.drawings });
+      setDrawings(panelId, {
+        fib: fib.drawings,
+        trendline: trendline.drawings,
+        pitchfork: pitchfork.drawings,
+        annotations: annotation.drawings,
+      });
     }
-  }, [fib.drawings, trendline.drawings, panelId, setDrawings]);
+  }, [fib.drawings, trendline.drawings, pitchfork.drawings, annotation.drawings, panelId, setDrawings]);
 
-  // Fetch bars when symbol or timeframe changes
+  // Fetch bars when symbol, timeframe, or chartType changes
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    getBars(config.symbol, config.timeframe, { limit: 300 })
+    const barsOptions: { limit: number; chart_type?: string; brick_size?: number } = { limit: 300 };
+    if (config.chartType === "renko") {
+      barsOptions.chart_type = "renko";
+      barsOptions.brick_size = 1.0;
+    } else if (config.chartType === "line_break") {
+      barsOptions.chart_type = "line_break";
+    }
+
+    getBars(config.symbol, config.timeframe, barsOptions)
       .then((resp) => {
         if (!cancelled) {
           setBars(resp.bars);
@@ -112,6 +131,21 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
         }
       });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [config.symbol, config.timeframe, config.chartType]);
+
+  // Fetch VPVR when symbol or timeframe changes
+  useEffect(() => {
+    let cancelled = false;
+    getVPVR(config.symbol, config.timeframe)
+      .then((data) => {
+        if (!cancelled) setVpvr(data.price_levels);
+      })
+      .catch(() => {
+        if (!cancelled) setVpvr(undefined);
+      });
     return () => {
       cancelled = true;
     };
@@ -161,10 +195,34 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
     }
   }, [fib, trendline]);
 
+  const handlePitchforkToggle = useCallback(() => {
+    if (pitchfork.isActive) {
+      pitchfork.deactivate();
+    } else {
+      fib.deactivate();
+      trendline.deactivate();
+      annotation.deactivate();
+      pitchfork.activate();
+    }
+  }, [pitchfork, fib, trendline, annotation]);
+
+  const handleAnnotationToggle = useCallback(() => {
+    if (annotation.isActive) {
+      annotation.deactivate();
+    } else {
+      fib.deactivate();
+      trendline.deactivate();
+      pitchfork.deactivate();
+      annotation.activate();
+    }
+  }, [annotation, fib, trendline, pitchfork]);
+
   const handleClearDrawings = useCallback(() => {
     fib.clear();
     trendline.clear();
-  }, [fib, trendline]);
+    pitchfork.clear();
+    annotation.clear();
+  }, [fib, trendline, pitchfork, annotation]);
 
   const toolbar = (
     <ChartToolbar
@@ -180,8 +238,12 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
       onToggleIndicator={handleToggleIndicator}
       fibActive={fib.isActive}
       trendActive={trendline.isActive}
+      pitchforkActive={pitchfork.isActive}
+      annotationActive={annotation.isActive}
       onFibToggle={handleFibToggle}
       onTrendToggle={handleTrendToggle}
+      onPitchforkToggle={handlePitchforkToggle}
+      onAnnotationToggle={handleAnnotationToggle}
       onClearDrawings={handleClearDrawings}
     />
   );
@@ -208,6 +270,7 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
           height={420}
           chartRef={chartRef}
           seriesRef={seriesRef}
+          vpvr={vpvr}
         />
       )}
     </Panel>

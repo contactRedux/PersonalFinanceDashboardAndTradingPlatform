@@ -141,6 +141,20 @@ async def _process_order(session, alpaca_order: dict, publish_fn) -> bool:
         except Exception:  # noqa: BLE001
             logger.debug("order_tasks.journal_dispatch_skipped", order_id=str(order.id))
 
+        # Update portfolio positions table via handle_order_fill task
+        try:
+            from app.tasks.fill_tasks import handle_order_fill  # noqa: PLC0415
+
+            handle_order_fill.delay(
+                symbol=order.symbol,
+                side=order.side,
+                filled_qty=order.filled_qty,
+                filled_avg_price=order.filled_avg_price or 0.0,
+                user_id=str(order.user_id),
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("order_tasks.fill_dispatch_skipped", order_id=str(order.id))
+
     # Publish to Redis → /ws/orders WebSocket
     order_data = {
         "id": str(order.broker_order_id or order.id),

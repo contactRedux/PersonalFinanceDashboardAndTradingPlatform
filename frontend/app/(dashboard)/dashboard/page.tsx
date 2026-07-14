@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useWorkspaceAutoSave } from "@/hooks/useWorkspaceAutoSave";
 import { PanelGrid } from "@/components/layout/PanelGrid";
 import { ChartPanel } from "@/components/panels/ChartPanel";
 import { WatchlistPanel } from "@/components/panels/WatchlistPanel";
@@ -44,6 +45,7 @@ import { MarketDataProvider } from "@/components/providers/MarketDataProvider";
  *  Row 8 — Dark Pool / Unusual Options + Crypto
  */
 export default function DashboardPage() {
+  useWorkspaceAutoSave();
   return (
     <MarketDataProvider>
       <PanelGrid>

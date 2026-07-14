@@ -18,6 +18,7 @@ from app.api.v1 import (
     portfolio,
     screener,
     strategies,
+    utils,
     watchlist,
     workspaces,
 )
@@ -41,3 +42,4 @@ api_v1_router.include_router(strategies.router, prefix="/strategies", tags=["str
 api_v1_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"])
 api_v1_router.include_router(journal.router, prefix="/journal", tags=["journal"])
 api_v1_router.include_router(ml.router, prefix="/ml", tags=["ml"])
+api_v1_router.include_router(utils.router, tags=["utils"])

@@ -53,9 +53,9 @@ jobs:
           JWT_SECRET_KEY: ci-test-secret-key-not-for-production
           JWT_ALGORITHM: HS256
 
-  # ─── E2E: Playwright (auth flow only — no live credentials needed) ───────────
+  # ─── E2E: Playwright (all specs — credential-gated tests skip gracefully) ────
   e2e:
-    name: E2E (Playwright — auth flow)
+    name: E2E (Playwright — all specs)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -79,14 +79,12 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run auth-flow E2E tests (no backend needed)
-        run: npx playwright test tests/e2e/auth.spec.ts --reporter=list
+      - name: Run E2E tests
+        run: npx playwright test tests/e2e/ --reporter=list
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
           NEXT_PUBLIC_WS_URL: ws://localhost:8000
-          # AUTH TESTS: expect /login to load and redirect unauthenticated users.
-          # The backend is NOT started here — tests verify frontend-only behaviour
-          # (page loads, form renders, redirect on unauthenticated access).
+          # TEST_USER_EMAIL and TEST_USER_PASSWORD intentionally absent — credential-gated tests will gracefully skip
 
   # ─── Live data integration (runs only when secrets are present) ─────────────
   live-data:
@@ -95,7 +93,9 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    # Only run when the Alpaca secret is present
+    # Only run when the Alpaca secret is present.
+    # This job is intentionally skipped for forks that do not have repository
+    # secrets configured — fork CI runs remain green without live credentials.
     if: ${{ secrets.ALPACA_SECRET_KEY != '' }}
     needs: backend
 
@@ -164,3 +164,22 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:8000
           NEXT_PUBLIC_WS_URL: ws://localhost:8000
+
+  # ─── Terraform: validate IaC (no backend, no credentials needed) ─────────────
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false
+        working-directory: infra/terraform
+
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: infra/terraform
