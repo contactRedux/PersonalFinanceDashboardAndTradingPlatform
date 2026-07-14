@@ -20,6 +20,7 @@ celery_app = Celery(
         "app.tasks.sentiment_tasks",
         "app.tasks.data_tasks",
         "app.tasks.alert_tasks",
+        "app.tasks.order_tasks",
     ],
 )
 
@@ -32,4 +33,14 @@ celery_app.conf.update(
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    beat_schedule={
+        "sync-open-orders-every-10s": {
+            "task": "order_tasks.sync_open_orders",
+            "schedule": 10.0,
+        },
+        "record-ticks-every-60s": {
+            "task": "tasks.record_ticks",
+            "schedule": 60.0,
+        },
+    },
 )

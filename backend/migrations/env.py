@@ -18,6 +18,7 @@ from app.models import (  # noqa: F401 — import ensures models are registered
     economic_event,
     fundamental,
     ohlcv,
+    order,
     portfolio,
     user,
     watchlist,

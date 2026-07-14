@@ -27,7 +27,8 @@ interface ChartPanelProps {
 }
 
 export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
-  const { panels, setSymbol, setTimeframe, setChartType } = useChartStore();
+  const { panels, setSymbol, setTimeframe, setChartType, addIndicator, removeIndicator, toggleIndicator } =
+    useChartStore();
   const config = panels[panelId] ?? {
     symbol: "AAPL",
     timeframe: "1d" as Timeframe,
@@ -81,15 +82,31 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
     (type: ChartType) => setChartType(panelId, type),
     [panelId, setChartType]
   );
+  const handleAddIndicator = useCallback(
+    (ind: import("@/store/chartStore").IndicatorConfig) => addIndicator(panelId, ind),
+    [panelId, addIndicator]
+  );
+  const handleRemoveIndicator = useCallback(
+    (id: string) => removeIndicator(panelId, id),
+    [panelId, removeIndicator]
+  );
+  const handleToggleIndicator = useCallback(
+    (id: string) => toggleIndicator(panelId, id),
+    [panelId, toggleIndicator]
+  );
 
   const toolbar = (
     <ChartToolbar
       symbol={config.symbol}
       timeframe={config.timeframe}
       chartType={config.chartType}
+      indicators={config.indicators}
       onSymbolChange={handleSymbolChange}
       onTimeframeChange={handleTimeframeChange}
       onChartTypeChange={handleChartTypeChange}
+      onAddIndicator={handleAddIndicator}
+      onRemoveIndicator={handleRemoveIndicator}
+      onToggleIndicator={handleToggleIndicator}
     />
   );
 
@@ -111,6 +128,7 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
           bars={bars}
           chartType={config.chartType}
           latestQuote={latestQuote}
+          indicators={config.indicators}
           height={420}
         />
       )}

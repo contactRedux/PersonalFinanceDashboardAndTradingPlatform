@@ -22,6 +22,7 @@ from app.models.order import Order
 from app.services.orders.service import (
     OrderRequest,
     cancel_order,
+    modify_order,
     place_order,
 )
 
@@ -40,6 +41,14 @@ class PlaceOrderRequest(BaseModel):
     limit_price: float | None = Field(None, gt=0)
     stop_price: float | None = Field(None, gt=0)
     time_in_force: str = Field("day", pattern="^(day|gtc|ioc|fok)$")
+    order_class: str = Field("simple", pattern="^(simple|bracket|oco)$")
+    take_profit_price: float | None = Field(None, gt=0)
+    stop_loss_price: float | None = Field(None, gt=0)
+
+
+class ModifyOrderRequest(BaseModel):
+    quantity: float | None = Field(None, gt=0)
+    limit_price: float | None = Field(None, gt=0)
 
 
 class OrderResponse(BaseModel):
@@ -80,7 +89,7 @@ def _db_order_to_response(order: Order) -> OrderResponse:
         limit_price=order.limit_price,
         stop_price=order.stop_price,
         submitted_at=order.submitted_at.isoformat() if order.submitted_at else "",
-        created_at=order.created_at.isoformat(),
+        created_at=order.created_at.isoformat() if order.created_at else "",
     )
 
 
@@ -108,6 +117,9 @@ async def place_order_endpoint(
         limit_price=body.limit_price,
         stop_price=body.stop_price,
         time_in_force=body.time_in_force,
+        order_class=body.order_class,
+        take_profit_price=body.take_profit_price,
+        stop_loss_price=body.stop_loss_price,
     )
 
     try:
@@ -188,6 +200,69 @@ async def get_order(order_id: str, current_user: CurrentUser, db: DBSession):
     order = result.scalar_one_or_none()
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+    return _db_order_to_response(order)
+
+
+@router.patch("/{order_id}", response_model=OrderResponse)
+async def modify_order_endpoint(
+    order_id: str,
+    body: ModifyOrderRequest,
+    current_user: CurrentUser,
+    db: DBSession,
+):
+    """Modify an open order's quantity or limit price."""
+    result_db = await db.execute(
+        select(Order).where(
+            Order.user_id == current_user["sub"],
+            Order.broker_order_id == order_id,
+        )
+    )
+    order = result_db.scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found.")
+
+    if order.status in ("filled", "cancelled", "rejected"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot modify order with status '{order.status}'.",
+        )
+
+    if body.quantity is None and body.limit_price is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one of quantity or limit_price must be provided.",
+        )
+
+    try:
+        updated = await modify_order(
+            broker_order_id=order.broker_order_id or order_id,
+            qty=body.quantity,
+            limit_price=body.limit_price,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error("orders.modify.error", exc=str(exc), order_id=order_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Order modification failed.",
+        ) from exc
+
+    if body.quantity is not None:
+        order.quantity = body.quantity
+    if body.limit_price is not None:
+        order.limit_price = body.limit_price
+    if updated is not None:
+        order.status = updated.status
+
+    await db.commit()
+    await db.refresh(order)
+
+    logger.info(
+        "orders.modified",
+        user_id=current_user["sub"],
+        order_id=order_id,
+        qty=body.quantity,
+        limit_price=body.limit_price,
+    )
     return _db_order_to_response(order)
 
 

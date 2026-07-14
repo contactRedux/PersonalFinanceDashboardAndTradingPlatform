@@ -17,6 +17,7 @@ import {
   type PositionData,
 } from "@/lib/api/portfolio";
 import { formatCurrency, formatPct, priceChangeClass } from "@/lib/formatters";
+import { useOrdersStore } from "@/store/ordersStore";
 
 interface PortfolioPanelProps {
   panelId?: string;
@@ -30,6 +31,8 @@ export function PortfolioPanel({ panelId = "portfolio" }: PortfolioPanelProps) {
   const [positions, setPositions] = useState<PositionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -50,8 +53,51 @@ export function PortfolioPanel({ panelId = "portfolio" }: PortfolioPanelProps) {
     return () => clearInterval(interval);
   }, [load]);
 
+  // Refresh positions when an order fill event arrives from OrderEntryPanel
+  const lastFill = useOrdersStore((s) => s.lastFill);
+  const clearLastFill = useOrdersStore((s) => s.clearLastFill);
+  useEffect(() => {
+    if (lastFill) {
+      void load();
+      clearLastFill();
+    }
+  }, [lastFill, load, clearLastFill]);
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!e.target.files) return;
+    e.target.value = "";
+    if (!file) return;
+    setImportMsg(null);
+    try {
+      const { getAccessToken } = await import("@/lib/api/client");
+      const token = getAccessToken();
+      const fd = new FormData();
+      fd.append("file", file);
+      const resp = await fetch("/api/v1/portfolio/import", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (resp.ok) {
+        const data = (await resp.json()) as { imported: number };
+        setImportMsg(`Imported ${data.imported} position${data.imported !== 1 ? "s" : ""}`);
+        void load();
+      } else {
+        const err = (await resp.json()) as { detail?: string | { message?: string } };
+        const msg =
+          typeof err.detail === "string"
+            ? err.detail
+            : err.detail?.message ?? "Import failed";
+        setImportMsg(`Error: ${msg}`);
+      }
+    } catch {
+      setImportMsg("Error: network error");
+    }
+  };
+
   const toolbar = (
-    <div style={styles.tabs}>
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
       {(["overview", "positions"] as Tab[]).map((t) => (
         <button
           key={t}
@@ -61,11 +107,39 @@ export function PortfolioPanel({ panelId = "portfolio" }: PortfolioPanelProps) {
           {t.toUpperCase()}
         </button>
       ))}
+      <button
+        style={styles.importBtn}
+        onClick={() => fileInputRef.current?.click()}
+        title="Import CSV positions"
+        aria-label="Import CSV"
+      >
+        Import CSV
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        style={{ display: "none" }}
+        aria-hidden="true"
+        onChange={handleImportFile}
+      />
     </div>
   );
 
   return (
     <Panel id={panelId} title="Portfolio" toolbar={toolbar}>
+      {importMsg && (
+        <div
+          style={{
+            ...styles.stateMsg,
+            color: importMsg.startsWith("Error")
+              ? "var(--color-accent-red)"
+              : "var(--color-accent-green)",
+          }}
+        >
+          {importMsg}
+        </div>
+      )}
       {loading && <div style={styles.stateMsg}>Loading…</div>}
       {error && <div style={{ ...styles.stateMsg, color: "var(--color-accent-red)" }}>{error}</div>}
 
@@ -303,6 +377,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-secondary)",
     cursor: "pointer",
     letterSpacing: "0.05em",
+  },
+  importBtn: {
+    padding: "2px 7px",
+    background: "none",
+    border: "1px solid rgba(14,165,233,0.35)",
+    borderRadius: 3,
+    fontSize: 9,
+    fontFamily: "var(--font-mono)",
+    color: "var(--color-accent-blue)",
+    cursor: "pointer",
+    letterSpacing: "0.05em",
+    marginLeft: 4,
   },
   tabActive: {
     background: "var(--color-accent-blue-bg)",

@@ -2,9 +2,10 @@
 Backtesting REST API router.
 
 Endpoints:
-  POST /api/v1/backtest/run     — run a backtest (vectorized or event-driven)
-  POST /api/v1/backtest/wfo     — run walk-forward optimization
-  POST /api/v1/backtest/report  — generate HTML report for a prior backtest
+  POST /api/v1/backtest/run      — run a backtest (vectorized or event-driven)
+  POST /api/v1/backtest/wfo      — run walk-forward optimization
+  POST /api/v1/backtest/optimize — Bayesian (Optuna) optimization
+  POST /api/v1/backtest/report   — generate HTML report for a prior backtest
 """
 
 from __future__ import annotations
@@ -113,15 +114,53 @@ class WfoResponse(BaseModel):
     combined_equity: list[float]
 
 
+class OptimizeRequest(BaseModel):
+    symbol: str = Field("AAPL", description="Ticker symbol")
+    timeframe: str = Field("1d", description="Bar timeframe")
+    start: str = Field("2022-01-01", description="ISO date YYYY-MM-DD")
+    end: str = Field("2024-01-01", description="ISO date YYYY-MM-DD")
+    strategy: str = Field("sma_cross", description="Strategy name")
+    param_space: dict = Field(
+        default_factory=lambda: {"fast": [5, 50, 1], "slow": [20, 200, 5]},
+        description="Mapping of param_name → [low, high, step]",
+    )
+    n_trials: int = Field(30, ge=3, le=300, description="Number of Optuna trials")
+    metric: str = Field("sharpe_ratio", description="Metric to maximise")
+    initial_capital: float = Field(100_000.0, gt=0)
+
+
+class TrialSchema(BaseModel):
+    number: int
+    params: dict
+    value: float | None
+    state: str
+
+
+class OptimizeResponse(BaseModel):
+    best_params: dict
+    best_value: float
+    n_trials: int
+    metric: str
+    trials: list[TrialSchema]
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
 def _get_strategy(name: str, params: dict):
     """Return an instantiated strategy by name."""
+    from backtesting.strategies.bollinger_band import BollingerBandStrategy  # noqa: PLC0415
+    from backtesting.strategies.macd_cross import MACDCrossStrategy  # noqa: PLC0415
+    from backtesting.strategies.rsi_mean_reversion import RSIMeanReversionStrategy  # noqa: PLC0415
     from backtesting.strategies.sma_cross import SmaCrossStrategy  # noqa: PLC0415
+    from backtesting.strategies.vwap_reversion import VWAPReversionStrategy  # noqa: PLC0415
 
     strategies = {
         "sma_cross": SmaCrossStrategy,
+        "rsi_mean_reversion": RSIMeanReversionStrategy,
+        "macd_cross": MACDCrossStrategy,
+        "bollinger_band": BollingerBandStrategy,
+        "vwap_reversion": VWAPReversionStrategy,
     }
     cls = strategies.get(name.lower())
     if cls is None:
@@ -139,9 +178,19 @@ def _get_strategy(name: str, params: dict):
 
 
 def _get_strategy_cls(name: str):
+    from backtesting.strategies.bollinger_band import BollingerBandStrategy  # noqa: PLC0415
+    from backtesting.strategies.macd_cross import MACDCrossStrategy  # noqa: PLC0415
+    from backtesting.strategies.rsi_mean_reversion import RSIMeanReversionStrategy  # noqa: PLC0415
     from backtesting.strategies.sma_cross import SmaCrossStrategy  # noqa: PLC0415
+    from backtesting.strategies.vwap_reversion import VWAPReversionStrategy  # noqa: PLC0415
 
-    strategies = {"sma_cross": SmaCrossStrategy}
+    strategies = {
+        "sma_cross": SmaCrossStrategy,
+        "rsi_mean_reversion": RSIMeanReversionStrategy,
+        "macd_cross": MACDCrossStrategy,
+        "bollinger_band": BollingerBandStrategy,
+        "vwap_reversion": VWAPReversionStrategy,
+    }
     cls = strategies.get(name.lower())
     if cls is None:
         raise HTTPException(
@@ -346,4 +395,68 @@ async def run_walk_forward(body: WfoRequest, current_user: CurrentUser):
         avg_oos_return_pct=wf.avg_oos_return,
         total_oos_trades=wf.total_oos_trades,
         combined_equity=wf.combined_equity,
+    )
+
+
+@router.post("/optimize", response_model=OptimizeResponse)
+async def run_bayesian_optimize(body: OptimizeRequest, current_user: CurrentUser):
+    """
+    Run Bayesian (Optuna TPE) optimization for a strategy.
+
+    Returns best params, best metric value, and all trial results.
+    """
+    try:
+        from backtesting.engine.vectorized import VectorizedEngine  # noqa: PLC0415
+        from backtesting.optimization.bayesian import BayesianOptimizer  # noqa: PLC0415
+    except ImportError as e:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Backtesting engine not available: {e}",
+        ) from e
+
+    strategy_cls = _get_strategy_cls(body.strategy)
+    data = _fetch_data(body.symbol, body.timeframe, body.start, body.end)
+
+    # Convert param_space list [low, high, step] → tuple
+    param_space: dict = {}
+    for name, spec in body.param_space.items():
+        if not isinstance(spec, (list, tuple)) or len(spec) != 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"param_space['{name}'] must be [low, high, step]",
+            )
+        param_space[name] = (float(spec[0]), float(spec[1]), float(spec[2]))
+
+    optimizer = BayesianOptimizer(
+        strategy_class=strategy_cls,
+        param_space=param_space,
+        engine_cls=VectorizedEngine,
+        metric=body.metric,
+        n_trials=body.n_trials,
+        engine_kwargs={"initial_capital": body.initial_capital},
+    )
+
+    try:
+        result = optimizer.run(data, symbol=body.symbol, timeframe=body.timeframe)
+    except Exception as e:  # noqa: BLE001
+        logger.error("backtest.optimize.error", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bayesian optimization failed.",
+        ) from e
+
+    return OptimizeResponse(
+        best_params=result.best_params,
+        best_value=result.best_value,
+        n_trials=result.n_trials,
+        metric=result.metric,
+        trials=[
+            TrialSchema(
+                number=t["number"],
+                params=t["params"],
+                value=t["value"],
+                state=t["state"],
+            )
+            for t in result.trials
+        ],
     )

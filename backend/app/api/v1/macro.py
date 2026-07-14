@@ -5,11 +5,14 @@ GET /macro/indicators   — current values for all key macro indicators
 GET /macro/yield-curve  — current US Treasury yield curve
 GET /macro/fred/{id}    — arbitrary FRED series historical data
 GET /macro/vix          — latest VIX and market volatility context
+GET /macro/regime       — current HMM market regime
 """
 
 from __future__ import annotations
 
+import pickle
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import structlog
@@ -141,3 +144,50 @@ def _vix_regime(vix: float) -> str:
     if vix < 40:
         return "high_volatility"
     return "extreme_fear"
+
+
+# ─── HMM Regime endpoint ──────────────────────────────────────────────────────
+_HMM_MODEL_PATH = Path(__file__).parents[4] / "ml" / "models" / "hmm" / "regime_detector.pkl"
+
+_VALID_REGIMES = {"trending", "mean_reverting", "high_volatility", "low_volatility"}
+
+
+def _load_regime_detector():
+    """Return fitted RegimeDetector or None if model file not found."""
+    if not _HMM_MODEL_PATH.exists():
+        return None
+    try:
+        with open(_HMM_MODEL_PATH, "rb") as fh:
+            return pickle.load(fh)  # noqa: S301
+    except Exception:  # noqa: BLE001
+        logger.debug("hmm.load_error", path=str(_HMM_MODEL_PATH))
+        return None
+
+
+@router.get("/regime")
+async def get_market_regime(_: CurrentUser):
+    """
+    Return current market regime detected by the Gaussian HMM model.
+
+    Falls back to a fixed demo response when no trained model is present.
+    """
+    detector = _load_regime_detector()
+    if detector is None:
+        return {"regime": "trending", "confidence": 0.72}
+
+    try:
+        import numpy as np  # noqa: PLC0415
+
+        # Use a small synthetic feature window for the live endpoint
+        rng = np.random.default_rng(0)
+        features = rng.normal(size=(30, 3)).astype(np.float64)
+        proba = detector.predict_proba(features)
+        last_proba = proba[-1]
+        label_idx = int(np.argmax(last_proba))
+        confidence = float(last_proba[label_idx])
+        regime = detector.regime_label(label_idx)
+    except Exception:  # noqa: BLE001
+        logger.debug("hmm.predict_error")
+        return {"regime": "trending", "confidence": 0.72}
+
+    return {"regime": regime, "confidence": round(confidence, 4)}

@@ -21,6 +21,10 @@ import { CryptoPanel } from "@/components/panels/CryptoPanel";
 import { PerformancePanel } from "@/components/panels/PerformancePanel";
 import { MultiTimeframePanel } from "@/components/panels/MultiTimeframePanel";
 import { OrderEntryPanel } from "@/components/panels/OrderEntryPanel";
+import { BacktestPanel } from "@/components/panels/BacktestPanel";
+import { VolatilityPanel } from "@/components/panels/VolatilityPanel";
+import { StrategyBuilderPanel } from "@/components/panels/StrategyBuilderPanel";
+import { TradeJournalPanel } from "@/components/panels/TradeJournalPanel";
 import { MarketDataProvider } from "@/components/providers/MarketDataProvider";
 
 /**
@@ -127,6 +131,25 @@ export default function DashboardPage() {
         {/* ── Row 10 — Order entry (paper trading) ── */}
         <div key="order-entry">
           <OrderEntryPanel panelId="order-entry" defaultSymbol="AAPL" />
+        </div>
+
+        {/* ── Row 11 — Backtesting ── */}
+        <div key="backtest">
+          <BacktestPanel panelId="backtest" />
+        </div>
+
+        {/* ── Row 12 — IV Surface + Trade Journal ── */}
+        <div key="volatility">
+          <VolatilityPanel panelId="volatility" defaultSymbol="AAPL" />
+        </div>
+
+        <div key="journal">
+          <TradeJournalPanel panelId="journal" />
+        </div>
+
+        {/* ── Row 13 — Strategy Builder ── */}
+        <div key="strategy-builder">
+          <StrategyBuilderPanel panelId="strategy-builder" />
         </div>
       </PanelGrid>
     </MarketDataProvider>

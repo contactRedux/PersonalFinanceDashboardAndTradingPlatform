@@ -1,11 +1,16 @@
 """
-Unit tests for the Order Management Service.
+Unit tests for the Order Management Service and portfolio/trades endpoint.
 
 Tests the service logic with Alpaca keys unavailable (simulation mode),
-and validates OrderRequest validation rules.
+validates OrderRequest validation rules, and covers the GET /portfolio/trades
+route logic with a mocked database session.
 """
 
 from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -124,3 +129,402 @@ class TestPlaceOrderSimulation:
         result = await place_order(req)
         assert result.filled_avg_price == 380.0
         assert result.limit_price == 380.0
+
+
+# ─── GET /portfolio/trades ────────────────────────────────────────────────────
+
+
+class TestPortfolioTradesEndpoint:
+    """Tests for the get_trades route function (mocked DB session)."""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_no_filled_orders(self) -> None:
+        """Empty orders table → trades: [], count: 0."""
+        from app.api.v1.portfolio import get_trades  # noqa: PLC0415
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=mock_result)
+        current_user = {"sub": str(uuid.uuid4())}
+
+        response = await get_trades(current_user=current_user, db=db, limit=200)
+        assert response["trades"] == []
+        assert response["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_returns_trade_records_for_filled_orders(self) -> None:
+        """Filled orders are mapped to TradeRecord-compatible dicts."""
+        from app.api.v1.portfolio import get_trades  # noqa: PLC0415
+        from app.models.order import Order  # noqa: PLC0415
+
+        now = datetime.now(UTC)
+        order = Order(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            broker_order_id="broker-abc",
+            client_order_id="client-abc",
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=10.0,
+            status="filled",
+            filled_qty=10.0,
+            filled_avg_price=185.50,
+            submitted_at=now,
+            filled_at=now,
+        )
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [order]
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=mock_result)
+        current_user = {"sub": str(order.user_id)}
+
+        response = await get_trades(current_user=current_user, db=db, limit=200)
+        assert response["count"] == 1
+        trade = response["trades"][0]
+        assert trade["id"] == "broker-abc"
+        assert trade["symbol"] == "AAPL"
+        assert trade["side"] == "buy"
+        assert trade["quantity"] == 10.0
+        assert trade["entry_price"] == 185.50
+        assert trade["exit_price"] is None  # single-leg orders have no exit price yet
+        assert trade["pnl"] is None
+
+    @pytest.mark.asyncio
+    async def test_id_falls_back_to_order_uuid_when_no_broker_id(self) -> None:
+        """When broker_order_id is None, id falls back to str(order.id)."""
+        from app.api.v1.portfolio import get_trades  # noqa: PLC0415
+        from app.models.order import Order  # noqa: PLC0415
+
+        oid = uuid.uuid4()
+        order = Order(
+            id=oid,
+            user_id=uuid.uuid4(),
+            broker_order_id=None,
+            client_order_id=None,
+            symbol="MSFT",
+            side="sell",
+            order_type="market",
+            quantity=5.0,
+            status="filled",
+            filled_qty=5.0,
+            filled_avg_price=400.0,
+            submitted_at=None,
+            filled_at=None,
+        )
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [order]
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=mock_result)
+        current_user = {"sub": str(order.user_id)}
+
+        response = await get_trades(current_user=current_user, db=db, limit=200)
+        assert response["trades"][0]["id"] == str(oid)
+        assert response["trades"][0]["entry_time"] is None
+        assert response["trades"][0]["exit_time"] is None
+
+
+# ─── Celery order_tasks — _process_order ─────────────────────────────────────
+
+
+class TestSyncOpenOrders:
+    """Tests for the _process_order helper inside order_tasks."""
+
+    @pytest.mark.asyncio
+    async def test_no_update_when_status_unchanged(self) -> None:
+        """If the Alpaca order has the same status as the DB record, no write occurs."""
+        from app.models.order import Order  # noqa: PLC0415
+        from app.tasks.order_tasks import _process_order  # noqa: PLC0415
+
+        order = Order(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            broker_order_id="broker-123",
+            client_order_id=None,
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=5.0,
+            status="submitted",
+            filled_qty=0.0,
+        )
+        alpaca_order = {"id": "broker-123", "status": "submitted", "filled_qty": 0}
+
+        # Build a session mock that returns our order
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = order
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        publish_fn = AsyncMock()
+        updated = await _process_order(session, alpaca_order, publish_fn)
+
+        assert updated is False
+        session.commit.assert_not_called()
+        publish_fn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_publishes_update_on_fill(self) -> None:
+        """When Alpaca reports 'filled', the DB is updated and publish_fn is called."""
+        from app.models.order import Order  # noqa: PLC0415
+        from app.tasks.order_tasks import _process_order  # noqa: PLC0415
+
+        uid = uuid.uuid4()
+        order = Order(
+            id=uuid.uuid4(),
+            user_id=uid,
+            broker_order_id="broker-456",
+            client_order_id=None,
+            symbol="NVDA",
+            side="buy",
+            order_type="market",
+            quantity=10.0,
+            status="submitted",
+            filled_qty=0.0,
+            filled_at=None,
+        )
+        alpaca_order = {
+            "id": "broker-456",
+            "status": "filled",
+            "filled_qty": "10",
+            "filled_avg_price": "498.50",
+        }
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = order
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        publish_fn = AsyncMock()
+        updated = await _process_order(session, alpaca_order, publish_fn)
+
+        assert updated is True
+        assert order.status == "filled"
+        assert order.filled_qty == 10.0
+        assert order.filled_avg_price == 498.50
+        session.commit.assert_called_once()
+        publish_fn.assert_called_once()
+        call_args = publish_fn.call_args
+        assert call_args[0][0] == str(uid)
+        assert call_args[0][1]["status"] == "filled"
+        assert call_args[0][1]["symbol"] == "NVDA"
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_order_not_in_db(self) -> None:
+        """Order in Alpaca but not in local DB → skip, no crash."""
+        from app.tasks.order_tasks import _process_order  # noqa: PLC0415
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=mock_result)
+
+        publish_fn = AsyncMock()
+        updated = await _process_order(
+            session, {"id": "ghost-order", "status": "filled", "filled_qty": 1}, publish_fn
+        )
+        assert updated is False
+        publish_fn.assert_not_called()
+
+
+# ─── Bracket order validation ─────────────────────────────────────────────────
+
+
+class TestBracketOrderRequest:
+    def test_bracket_requires_take_profit_and_stop_loss(self) -> None:
+        from app.services.orders.service import OrderRequest  # noqa: PLC0415
+
+        with pytest.raises(ValueError, match="take_profit_price and stop_loss_price required"):
+            OrderRequest(
+                user_id="u",
+                symbol="AAPL",
+                side="buy",
+                order_type="market",
+                quantity=10,
+                order_class="bracket",
+                take_profit_price=None,
+                stop_loss_price=None,
+            )
+
+    def test_bracket_valid_with_both_prices(self) -> None:
+        from app.services.orders.service import OrderRequest  # noqa: PLC0415
+
+        req = OrderRequest(
+            user_id="u",
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=10,
+            order_class="bracket",
+            take_profit_price=160.0,
+            stop_loss_price=140.0,
+        )
+        assert req.order_class == "bracket"
+        assert req.take_profit_price == 160.0
+        assert req.stop_loss_price == 140.0
+
+    def test_invalid_order_class_raises(self) -> None:
+        from app.services.orders.service import OrderRequest  # noqa: PLC0415
+
+        with pytest.raises(ValueError, match="Invalid order_class"):
+            OrderRequest(
+                user_id="u",
+                symbol="AAPL",
+                side="buy",
+                order_type="market",
+                quantity=10,
+                order_class="invalid",
+            )
+
+    def test_simple_order_class_is_default(self) -> None:
+        from app.services.orders.service import OrderRequest  # noqa: PLC0415
+
+        req = OrderRequest(user_id="u", symbol="AAPL", side="buy", order_type="market", quantity=5)
+        assert req.order_class == "simple"
+
+
+class TestBracketPlaceOrderSimulation:
+    @pytest.mark.asyncio
+    async def test_bracket_order_simulated_fill(self) -> None:
+        """Bracket order falls back to simulated fill without Alpaca keys."""
+        from app.services.orders.service import OrderRequest, place_order  # noqa: PLC0415
+
+        req = OrderRequest(
+            user_id="u",
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=10,
+            order_class="bracket",
+            take_profit_price=160.0,
+            stop_loss_price=140.0,
+        )
+        result = await place_order(req)
+        assert result.status == "filled"
+        assert result.symbol == "AAPL"
+
+    @pytest.mark.asyncio
+    async def test_oco_order_simulated_fill(self) -> None:
+        """OCO order falls back to simulated fill without Alpaca keys."""
+        from app.services.orders.service import OrderRequest, place_order  # noqa: PLC0415
+
+        req = OrderRequest(
+            user_id="u",
+            symbol="MSFT",
+            side="sell",
+            order_type="limit",
+            quantity=5,
+            limit_price=400.0,
+            order_class="oco",
+            take_profit_price=420.0,
+            stop_loss_price=380.0,
+        )
+        result = await place_order(req)
+        assert result.status == "filled"
+
+
+# ─── PATCH /orders/{id} — modify order ────────────────────────────────────────
+
+
+class TestModifyOrderEndpoint:
+    @pytest.mark.asyncio
+    async def test_modify_returns_404_when_order_not_found(self) -> None:
+        from app.api.v1.orders import (
+            ModifyOrderRequest,  # noqa: PLC0415
+            modify_order_endpoint,  # noqa: PLC0415
+        )
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=mock_result)
+        current_user = {"sub": str(uuid.uuid4())}
+
+        with pytest.raises(HTTPException) as exc_info:
+            await modify_order_endpoint(
+                order_id="nonexistent",
+                body=ModifyOrderRequest(quantity=10),
+                current_user=current_user,
+                db=db,
+            )
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_modify_409_when_order_filled(self) -> None:
+        from app.api.v1.orders import (
+            ModifyOrderRequest,  # noqa: PLC0415
+            modify_order_endpoint,  # noqa: PLC0415
+        )
+        from app.models.order import Order  # noqa: PLC0415
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        order = Order(
+            id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            broker_order_id="broker-xyz",
+            client_order_id=None,
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=10.0,
+            status="filled",
+            filled_qty=10.0,
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = order
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=mock_result)
+        current_user = {"sub": str(order.user_id)}
+
+        with pytest.raises(HTTPException) as exc_info:
+            await modify_order_endpoint(
+                order_id="broker-xyz",
+                body=ModifyOrderRequest(quantity=20),
+                current_user=current_user,
+                db=db,
+            )
+        assert exc_info.value.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_modify_updates_quantity_in_demo_mode(self) -> None:
+        from app.api.v1.orders import (
+            ModifyOrderRequest,  # noqa: PLC0415
+            modify_order_endpoint,  # noqa: PLC0415
+        )
+        from app.models.order import Order  # noqa: PLC0415
+
+        uid = uuid.uuid4()
+        order = Order(
+            id=uuid.uuid4(),
+            user_id=uid,
+            broker_order_id="broker-pending",
+            client_order_id=None,
+            symbol="AAPL",
+            side="buy",
+            order_type="limit",
+            quantity=10.0,
+            limit_price=150.0,
+            status="accepted",
+            filled_qty=0.0,
+        )
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = order
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=mock_result)
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+        current_user = {"sub": str(uid)}
+
+        response = await modify_order_endpoint(
+            order_id="broker-pending",
+            body=ModifyOrderRequest(quantity=20.0, limit_price=155.0),
+            current_user=current_user,
+            db=db,
+        )
+        assert response.quantity == 20.0
+        assert response.limit_price == 155.0
+        db.commit.assert_called_once()

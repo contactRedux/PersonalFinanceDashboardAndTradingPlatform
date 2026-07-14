@@ -52,6 +52,10 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { i: "performance", x: 0,  y: 72, w: 6, h: 14, minW: 4, minH: 8 },
   { i: "mtf",         x: 6,  y: 72, w: 6, h: 14, minW: 4, minH: 8 },
   { i: "order-entry", x: 0,  y: 86, w: 4, h: 14, minW: 3, minH: 8 },
+  { i: "backtest",    x: 4,  y: 86, w: 8, h: 20, minW: 4, minH: 12 },
+  { i: "volatility",        x: 0,  y: 106, w: 7,  h: 16, minW: 4, minH: 10 },
+  { i: "journal",           x: 7,  y: 106, w: 5,  h: 16, minW: 3, minH: 8 },
+  { i: "strategy-builder",  x: 0,  y: 122, w: 12, h: 22, minW: 6, minH: 14 },
 ];
 
 interface LayoutState {

@@ -8,6 +8,7 @@ from app.models.dashboard_layout import DashboardLayout
 from app.models.economic_event import EconomicEvent
 from app.models.fundamental import Fundamental
 from app.models.ohlcv import OHLCV, Tick
+from app.models.order import Order
 from app.models.portfolio import Portfolio, Position
 from app.models.user import User
 from app.models.watchlist import Watchlist
@@ -19,6 +20,7 @@ __all__ = [
     "OHLCV",
     "Tick",
     "Fundamental",
+    "Order",
     "Portfolio",
     "Position",
     "EconomicEvent",

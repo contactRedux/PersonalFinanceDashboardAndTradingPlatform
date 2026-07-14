@@ -4,10 +4,18 @@ Backend test configuration and shared fixtures.
 
 from __future__ import annotations
 
-import pytest
-from app.config import get_settings
-from app.main import app
-from httpx import ASGITransport, AsyncClient
+import os
+import sys
+
+# Add the monorepo root to sys.path so tests can import ml.* and backtesting.*
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+import pytest  # noqa: E402
+from app.config import get_settings  # noqa: E402
+from app.main import app  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 
 @pytest.fixture(scope="session")

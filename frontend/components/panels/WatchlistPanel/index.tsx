@@ -11,6 +11,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Panel } from "@/components/layout/Panel";
+import { Sparkline } from "@/components/ui/Sparkline";
 import { useMarketDataStore } from "@/store/marketDataStore";
 import { useWatchlistStore } from "@/store/watchlistStore";
 import { formatPrice, formatPct, priceChangeClass } from "@/lib/formatters";
@@ -23,6 +24,7 @@ interface WatchlistPanelProps {
 
 export function WatchlistPanel({ panelId = "watchlist" }: WatchlistPanelProps) {
   const quotes = useMarketDataStore((s) => s.quotes);
+  const priceHistory = useMarketDataStore((s) => s.priceHistory);
   const { watchlists, activeWatchlistId, setActive, addSymbol, removeSymbol } =
     useWatchlistStore();
 
@@ -131,6 +133,7 @@ export function WatchlistPanel({ panelId = "watchlist" }: WatchlistPanelProps) {
             <th style={styles.th}>Chg</th>
             <th style={styles.th}>Chg%</th>
             <th style={styles.th}>Vol</th>
+            <th style={styles.th}>Spark</th>
             <th style={styles.th} />
           </tr>
         </thead>
@@ -146,6 +149,7 @@ export function WatchlistPanel({ panelId = "watchlist" }: WatchlistPanelProps) {
                   change={quote?.change ?? null}
                   changePct={quote?.change_pct ?? null}
                   volume={quote?.volume ?? null}
+                  sparkline={priceHistory[symbol] ?? []}
                   onRemove={handleRemoveSymbol}
                 />
               );
@@ -180,6 +184,7 @@ interface WatchlistRowProps {
   change: number | null;
   changePct: number | null;
   volume: number | null;
+  sparkline: number[];
   onRemove: (symbol: string) => void;
 }
 
@@ -189,6 +194,7 @@ function WatchlistRow({
   change,
   changePct,
   volume,
+  sparkline,
   onRemove,
 }: WatchlistRowProps) {
   const colorClass = priceChangeClass(changePct ?? 0);
@@ -241,6 +247,15 @@ function WatchlistRow({
         <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--color-text-muted)" }}>
           {volume !== null ? formatVolume(volume) : "—"}
         </span>
+      </td>
+
+      {/* Sparkline */}
+      <td style={{ ...styles.td, padding: "2px 4px" }}>
+        {sparkline.length >= 2 ? (
+          <Sparkline data={sparkline} width={60} height={22} />
+        ) : (
+          <span style={{ fontSize: 9, color: "#333", fontFamily: "var(--font-mono)" }}>—</span>
+        )}
       </td>
 
       {/* Remove button */}

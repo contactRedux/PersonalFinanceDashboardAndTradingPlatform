@@ -6,15 +6,17 @@
  * Features:
  *   - Market / Limit / Stop / Stop-Limit order types
  *   - Buy / Sell side with color indication
- *   - Real-time symbol input, quantity, limit price, stop price
+ *   - Bracket orders (take-profit + stop-loss legs)
+ *   - OCO (one-cancels-other) checkbox
  *   - Time-in-force selector (day, gtc, ioc, fok)
  *   - Live order status updates via WebSocket feed
- *   - Recent orders list (last 10)
+ *   - Order modification inline (qty / limit price) in MY ORDERS tab
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Panel } from "@/components/layout/Panel";
 import { formatCurrency } from "@/lib/formatters";
+import { useOrdersStore } from "@/store/ordersStore";
 
 interface Order {
   id: string;
@@ -50,14 +52,29 @@ export function OrderEntryPanel({
   const [stopPrice, setStopPrice] = useState("");
   const [tif, setTif] = useState<TimeInForce>("day");
 
+  // Bracket / OCO state
+  const [bracketEnabled, setBracketEnabled] = useState(false);
+  const [ocoEnabled, setOcoEnabled] = useState(false);
+  const [takeProfitPrice, setTakeProfitPrice] = useState("");
+  const [stopLossPrice, setStopLossPrice] = useState("");
+
   // Order management
   const [orders, setOrders] = useState<Order[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
+  // Order modification
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editLimitPrice, setEditLimitPrice] = useState("");
+  const [modifying, setModifying] = useState(false);
+  const [modifyError, setModifyError] = useState<string | null>(null);
+
   // Tab
   const [tab, setTab] = useState<"entry" | "orders">("entry");
+
+  const setLastFill = useOrdersStore((s) => s.setLastFill);
 
   // Load recent orders
   const loadOrders = useCallback(async () => {
@@ -77,9 +94,8 @@ export function OrderEntryPanel({
   // WebSocket order status updates
   const wsRef = useRef<WebSocket | null>(null);
   useEffect(() => {
-    const token = typeof window !== "undefined"
-      ? localStorage.getItem("access_token")
-      : null;
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     if (!token) return;
     const wsBase = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
     const ws = new WebSocket(`${wsBase}/ws/orders?token=${token}`);
@@ -97,13 +113,25 @@ export function OrderEntryPanel({
             }
             return [msg.order!, ...prev].slice(0, 10);
           });
+          // Notify PortfolioPanel of fills
+          if (msg.order.status === "filled") {
+            setLastFill({
+              orderId: msg.order.id,
+              symbol: msg.order.symbol,
+              side: msg.order.side,
+              filledQty: msg.order.filled_qty,
+              filledAvgPrice: msg.order.filled_avg_price,
+              filledAt: new Date().toISOString(),
+            });
+          }
         }
       } catch {
         // ignore malformed WS messages
       }
     };
-    return () => ws.close();
-  }, []);
+    const wsHandle = wsRef.current;
+    return () => wsHandle?.close();
+  }, [setLastFill]);
 
   const handleSubmit = useCallback(async () => {
     const qty = parseFloat(quantity);
@@ -115,6 +143,14 @@ export function OrderEntryPanel({
       setSubmitError("Limit price required for limit orders.");
       return;
     }
+    if (bracketEnabled && (!takeProfitPrice || !stopLossPrice)) {
+      setSubmitError("Bracket orders require take-profit and stop-loss prices.");
+      return;
+    }
+    if (ocoEnabled && (!takeProfitPrice || !stopLossPrice)) {
+      setSubmitError("OCO orders require take-profit and stop-loss prices.");
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -122,32 +158,67 @@ export function OrderEntryPanel({
 
     try {
       const { apiRequest } = await import("@/lib/api/client");
+      const orderClass = bracketEnabled ? "bracket" : ocoEnabled ? "oco" : "simple";
       const payload: Record<string, unknown> = {
         symbol: symbol.toUpperCase(),
         side,
         order_type: orderType,
         quantity: qty,
         time_in_force: tif,
+        order_class: orderClass,
       };
       if (limitPrice) payload.limit_price = parseFloat(limitPrice);
       if (stopPrice) payload.stop_price = parseFloat(stopPrice);
+      if (bracketEnabled || ocoEnabled) {
+        if (takeProfitPrice) payload.take_profit_price = parseFloat(takeProfitPrice);
+        if (stopLossPrice) payload.stop_loss_price = parseFloat(stopLossPrice);
+      }
 
       const order = await apiRequest<Order>("/api/v1/orders", {
         method: "POST",
         body: JSON.stringify(payload),
       });
       setOrders((prev) => [order, ...prev].slice(0, 10));
-      setSubmitSuccess(
-        `${side.toUpperCase()} ${qty} ${symbol.toUpperCase()} — ${order.status}`
-      );
-      // Reset quantity after fill
+      setSubmitSuccess(`${side.toUpperCase()} ${qty} ${symbol.toUpperCase()} — ${order.status}`);
       if (order.status === "filled") setQuantity("100");
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : "Order failed.");
     } finally {
       setSubmitting(false);
     }
-  }, [symbol, side, orderType, quantity, limitPrice, stopPrice, tif]);
+  }, [symbol, side, orderType, quantity, limitPrice, stopPrice, tif, bracketEnabled, ocoEnabled, takeProfitPrice, stopLossPrice]);
+
+  const handleModify = useCallback(
+    async (orderId: string) => {
+      if (!editQty && !editLimitPrice) {
+        setModifyError("Enter a new quantity or limit price.");
+        return;
+      }
+      setModifying(true);
+      setModifyError(null);
+      try {
+        const { apiRequest } = await import("@/lib/api/client");
+        const patch: Record<string, unknown> = {};
+        if (editQty) patch.quantity = parseFloat(editQty);
+        if (editLimitPrice) patch.limit_price = parseFloat(editLimitPrice);
+        const updated = await apiRequest<Order>(`/api/v1/orders/${orderId}`, {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        });
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, ...updated } : o))
+        );
+        setEditingOrderId(null);
+        setEditQty("");
+        setEditLimitPrice("");
+      } catch (err: unknown) {
+        setModifyError(err instanceof Error ? err.message : "Modification failed.");
+      } finally {
+        setModifying(false);
+      }
+    },
+    [editQty, editLimitPrice]
+  );
 
   const showLimitPrice = orderType === "limit" || orderType === "stop_limit";
   const showStopPrice = orderType === "stop" || orderType === "stop_limit";
@@ -280,12 +351,71 @@ export function OrderEntryPanel({
             </select>
           </FieldRow>
 
+          {/* Bracket / OCO toggles */}
+          <div style={styles.toggleRow}>
+            <label style={styles.toggleLabel}>
+              <input
+                type="checkbox"
+                checked={bracketEnabled}
+                onChange={(e) => {
+                  setBracketEnabled(e.target.checked);
+                  if (e.target.checked) setOcoEnabled(false);
+                }}
+                aria-label="Enable bracket order"
+              />
+              <span style={{ marginLeft: 5 }}>Bracket</span>
+            </label>
+            <label style={{ ...styles.toggleLabel, marginLeft: 12 }}>
+              <input
+                type="checkbox"
+                checked={ocoEnabled}
+                onChange={(e) => {
+                  setOcoEnabled(e.target.checked);
+                  if (e.target.checked) setBracketEnabled(false);
+                }}
+                aria-label="Enable OCO order"
+              />
+              <span style={{ marginLeft: 5 }}>OCO</span>
+            </label>
+          </div>
+
+          {/* Bracket / OCO legs */}
+          {(bracketEnabled || ocoEnabled) && (
+            <>
+              <FieldRow label="TP $">
+                <input
+                  style={styles.input}
+                  type="number"
+                  step="0.01"
+                  value={takeProfitPrice}
+                  onChange={(e) => setTakeProfitPrice(e.target.value)}
+                  placeholder="160.00"
+                  aria-label="Take profit price"
+                />
+              </FieldRow>
+              <FieldRow label="SL $">
+                <input
+                  style={styles.input}
+                  type="number"
+                  step="0.01"
+                  value={stopLossPrice}
+                  onChange={(e) => setStopLossPrice(e.target.value)}
+                  placeholder="140.00"
+                  aria-label="Stop loss price"
+                />
+              </FieldRow>
+            </>
+          )}
+
           {/* Submit */}
           <div style={styles.submitRow}>
             <button
               style={{
                 ...styles.submitBtn,
-                background: side === "buy" ? "var(--color-accent-green)" : "var(--color-accent-red)",
+                background:
+                  side === "buy"
+                    ? "var(--color-accent-green)"
+                    : "var(--color-accent-red)",
                 opacity: submitting ? 0.6 : 1,
               }}
               onClick={() => void handleSubmit()}
@@ -299,22 +429,39 @@ export function OrderEntryPanel({
           </div>
 
           {/* Feedback */}
-          {submitError && (
-            <div style={styles.errorMsg}>{submitError}</div>
-          )}
-          {submitSuccess && (
-            <div style={styles.successMsg}>{submitSuccess}</div>
-          )}
+          {submitError && <div style={styles.errorMsg}>{submitError}</div>}
+          {submitSuccess && <div style={styles.successMsg}>{submitSuccess}</div>}
 
           {/* Paper trading disclaimer */}
-          <div style={styles.disclaimer}>
-            ⚠ Paper trading — no real capital at risk
-          </div>
+          <div style={styles.disclaimer}>⚠ Paper trading — no real capital at risk</div>
         </div>
       )}
 
       {tab === "orders" && (
-        <OrdersTable orders={orders} onRefresh={() => void loadOrders()} />
+        <OrdersTable
+          orders={orders}
+          editingOrderId={editingOrderId}
+          editQty={editQty}
+          editLimitPrice={editLimitPrice}
+          modifying={modifying}
+          modifyError={modifyError}
+          onRefresh={() => void loadOrders()}
+          onStartEdit={(id, o) => {
+            setEditingOrderId(id);
+            setEditQty(String(o.quantity));
+            setEditLimitPrice(o.limit_price != null ? String(o.limit_price) : "");
+            setModifyError(null);
+          }}
+          onCancelEdit={() => {
+            setEditingOrderId(null);
+            setEditQty("");
+            setEditLimitPrice("");
+            setModifyError(null);
+          }}
+          onEditQtyChange={setEditQty}
+          onEditLimitPriceChange={setEditLimitPrice}
+          onSubmitModify={(id) => void handleModify(id)}
+        />
       )}
     </Panel>
   );
@@ -331,13 +478,38 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
+interface OrdersTableProps {
+  orders: Order[];
+  editingOrderId: string | null;
+  editQty: string;
+  editLimitPrice: string;
+  modifying: boolean;
+  modifyError: string | null;
+  onRefresh: () => void;
+  onStartEdit: (id: string, order: Order) => void;
+  onCancelEdit: () => void;
+  onEditQtyChange: (v: string) => void;
+  onEditLimitPriceChange: (v: string) => void;
+  onSubmitModify: (id: string) => void;
+}
+
 function OrdersTable({
   orders,
+  editingOrderId,
+  editQty,
+  editLimitPrice,
+  modifying,
+  modifyError,
   onRefresh,
-}: {
-  orders: Order[];
-  onRefresh: () => void;
-}) {
+  onStartEdit,
+  onCancelEdit,
+  onEditQtyChange,
+  onEditLimitPriceChange,
+  onSubmitModify,
+}: OrdersTableProps) {
+  const canModify = (o: Order) =>
+    !["filled", "cancelled", "rejected"].includes(o.status);
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 8px" }}>
@@ -351,38 +523,108 @@ function OrdersTable({
         <table style={styles.table}>
           <thead>
             <tr>
-              {["Symbol", "Side", "Type", "Qty", "Filled", "Avg Price", "Status"].map((h) => (
-                <th key={h} style={styles.th}>
-                  {h}
-                </th>
-              ))}
+              {["Symbol", "Side", "Type", "Qty", "Filled", "Avg Price", "Status", ""].map(
+                (h) => (
+                  <th key={h} style={styles.th}>
+                    {h}
+                  </th>
+                )
+              )}
             </tr>
           </thead>
           <tbody>
             {orders.map((o) => (
-              <tr key={o.id} style={styles.tr}>
-                <td style={{ ...styles.td, fontWeight: 700, color: "var(--color-accent-blue)" }}>
-                  {o.symbol}
-                </td>
-                <td
-                  style={{
-                    ...styles.td,
-                    color: o.side === "buy"
-                      ? "var(--color-accent-green)"
-                      : "var(--color-accent-red)",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {o.side}
-                </td>
-                <td style={styles.td}>{o.order_type}</td>
-                <td style={styles.td}>{o.quantity}</td>
-                <td style={styles.td}>{o.filled_qty}</td>
-                <td style={styles.td}>
-                  {o.filled_avg_price != null ? formatCurrency(o.filled_avg_price) : "—"}
-                </td>
-                <td style={{ ...styles.td, ...statusStyle(o.status) }}>{o.status}</td>
-              </tr>
+              <React.Fragment key={o.id}>
+                <tr style={styles.tr}>
+                  <td
+                    style={{
+                      ...styles.td,
+                      fontWeight: 700,
+                      color: "var(--color-accent-blue)",
+                    }}
+                  >
+                    {o.symbol}
+                  </td>
+                  <td
+                    style={{
+                      ...styles.td,
+                      color:
+                        o.side === "buy"
+                          ? "var(--color-accent-green)"
+                          : "var(--color-accent-red)",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {o.side}
+                  </td>
+                  <td style={styles.td}>{o.order_type}</td>
+                  <td style={styles.td}>{o.quantity}</td>
+                  <td style={styles.td}>{o.filled_qty}</td>
+                  <td style={styles.td}>
+                    {o.filled_avg_price != null
+                      ? formatCurrency(o.filled_avg_price)
+                      : "—"}
+                  </td>
+                  <td style={{ ...styles.td, ...statusStyle(o.status) }}>{o.status}</td>
+                  <td style={styles.td}>
+                    {canModify(o) && editingOrderId !== o.id && (
+                      <button
+                        style={styles.editBtn}
+                        onClick={() => onStartEdit(o.id, o)}
+                        aria-label={`Edit order ${o.id}`}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {editingOrderId === o.id && (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "6px 8px" }}>
+                      <div style={styles.modifyForm}>
+                        <input
+                          style={{ ...styles.input, width: 60 }}
+                          type="number"
+                          min="1"
+                          placeholder="Qty"
+                          value={editQty}
+                          onChange={(e) => onEditQtyChange(e.target.value)}
+                          aria-label="Edit quantity"
+                        />
+                        <input
+                          style={{ ...styles.input, width: 70, marginLeft: 4 }}
+                          type="number"
+                          step="0.01"
+                          placeholder="Limit $"
+                          value={editLimitPrice}
+                          onChange={(e) => onEditLimitPriceChange(e.target.value)}
+                          aria-label="Edit limit price"
+                        />
+                        <button
+                          style={{ ...styles.editBtn, marginLeft: 4, opacity: modifying ? 0.6 : 1 }}
+                          onClick={() => onSubmitModify(o.id)}
+                          disabled={modifying}
+                          aria-label="Confirm modify"
+                        >
+                          {modifying ? "…" : "✓"}
+                        </button>
+                        <button
+                          style={{ ...styles.editBtn, marginLeft: 2 }}
+                          onClick={onCancelEdit}
+                          aria-label="Cancel modify"
+                        >
+                          ✕
+                        </button>
+                        {modifyError && (
+                          <span style={{ ...styles.errorMsg, marginLeft: 6 }}>
+                            {modifyError}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -470,6 +712,21 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid var(--color-accent-red)",
     color: "var(--color-accent-red)",
   },
+  toggleRow: {
+    display: "flex",
+    alignItems: "center",
+    marginBottom: 6,
+    marginTop: 2,
+  },
+  toggleLabel: {
+    display: "flex",
+    alignItems: "center",
+    fontSize: 10,
+    fontFamily: "var(--font-mono)",
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+    userSelect: "none",
+  },
   submitRow: { marginTop: 12, marginBottom: 6 },
   submitBtn: {
     width: "100%",
@@ -550,6 +807,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--color-text-muted)",
     cursor: "pointer",
     fontFamily: "var(--font-mono)",
+  },
+  editBtn: {
+    background: "none",
+    border: "1px solid var(--color-bg-border)",
+    borderRadius: 3,
+    padding: "2px 5px",
+    fontSize: 9,
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+    fontFamily: "var(--font-mono)",
+  },
+  modifyForm: {
+    display: "flex",
+    alignItems: "center",
+    gap: 0,
   },
   empty: {
     textAlign: "center" as const,

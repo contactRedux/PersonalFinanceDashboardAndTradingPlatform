@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * ChartToolbar — timeframe selector, chart type toggle, symbol input.
+ * ChartToolbar — timeframe selector, chart type toggle, symbol input,
+ * and indicator overlay manager.
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import type { Timeframe } from "@/types/market";
-import type { ChartType } from "@/store/chartStore";
+import type { ChartType, IndicatorConfig } from "@/store/chartStore";
 
 const TIMEFRAMES: { label: string; value: Timeframe }[] = [
   { label: "1m", value: "1m" },
@@ -27,24 +28,54 @@ const CHART_TYPES: { label: string; value: ChartType }[] = [
   { label: "Base", value: "baseline" },
 ];
 
+const INDICATOR_TYPES: { label: string; type: string; defaultParams: Record<string, number> }[] = [
+  { label: "SMA", type: "sma", defaultParams: { period: 20 } },
+  { label: "EMA", type: "ema", defaultParams: { period: 20 } },
+  { label: "WMA", type: "wma", defaultParams: { period: 20 } },
+  { label: "BB", type: "bb", defaultParams: { period: 20, std_dev: 2 } },
+  { label: "RSI", type: "rsi", defaultParams: { period: 14 } },
+  { label: "MACD", type: "macd", defaultParams: { fast: 12, slow: 26, signal: 9 } },
+];
+
 interface ChartToolbarProps {
   symbol: string;
   timeframe: Timeframe;
   chartType: ChartType;
+  indicators: IndicatorConfig[];
   onSymbolChange: (symbol: string) => void;
   onTimeframeChange: (tf: Timeframe) => void;
   onChartTypeChange: (type: ChartType) => void;
+  onAddIndicator: (indicator: IndicatorConfig) => void;
+  onRemoveIndicator: (id: string) => void;
+  onToggleIndicator: (id: string) => void;
 }
 
 export function ChartToolbar({
   symbol,
   timeframe,
   chartType,
+  indicators,
   onSymbolChange,
   onTimeframeChange,
   onChartTypeChange,
+  onAddIndicator,
+  onRemoveIndicator,
+  onToggleIndicator,
 }: ChartToolbarProps) {
   const [symbolInput, setSymbolInput] = useState(symbol);
+  const [indMenuOpen, setIndMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIndMenuOpen(false);
+      }
+    }
+    if (indMenuOpen) document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [indMenuOpen]);
 
   const handleSymbolSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -53,6 +84,15 @@ export function ChartToolbar({
       if (s) onSymbolChange(s);
     },
     [symbolInput, onSymbolChange]
+  );
+
+  const handleAddIndicator = useCallback(
+    (type: string, defaultParams: Record<string, number>) => {
+      const id = `${type}-${Date.now()}`;
+      onAddIndicator({ id, type, params: defaultParams, visible: true });
+      setIndMenuOpen(false);
+    },
+    [onAddIndicator]
   );
 
   return (
@@ -109,6 +149,72 @@ export function ChartToolbar({
           </button>
         ))}
       </div>
+
+      {/* Separator */}
+      <div style={styles.sep} />
+
+      {/* Indicator dropdown */}
+      <div ref={menuRef} style={styles.indWrapper}>
+        <button
+          style={{
+            ...styles.btn,
+            ...(indMenuOpen ? styles.btnActive : {}),
+          }}
+          onClick={() => setIndMenuOpen((v) => !v)}
+          aria-label="Add indicator"
+          aria-expanded={indMenuOpen}
+        >
+          Ind ▾
+        </button>
+
+        {indMenuOpen && (
+          <div style={styles.indMenu} role="menu">
+            {INDICATOR_TYPES.map(({ label, type, defaultParams }) => (
+              <button
+                key={type}
+                style={styles.indMenuItem}
+                role="menuitem"
+                onClick={() => handleAddIndicator(type, defaultParams)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Active indicator pills */}
+      {indicators.length > 0 && (
+        <>
+          <div style={styles.sep} />
+          <div style={styles.pillGroup}>
+            {indicators.map((ind) => (
+              <div key={ind.id} style={styles.pill}>
+                <button
+                  style={{
+                    ...styles.pillLabel,
+                    opacity: ind.visible ? 1 : 0.4,
+                  }}
+                  onClick={() => onToggleIndicator(ind.id)}
+                  title={ind.visible ? "Hide" : "Show"}
+                  aria-label={`Toggle ${ind.type}`}
+                >
+                  {ind.type.toUpperCase()}
+                  {ind.params.period ? `(${ind.params.period})` : ""}
+                </button>
+                <button
+                  style={styles.pillRemove}
+                  onClick={() => onRemoveIndicator(ind.id)}
+                  aria-label={`Remove ${ind.type}`}
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -166,5 +272,66 @@ const styles: Record<string, React.CSSProperties> = {
     width: 1,
     height: 16,
     background: "#222",
+  },
+  indWrapper: {
+    position: "relative" as const,
+  },
+  indMenu: {
+    position: "absolute" as const,
+    top: "calc(100% + 4px)",
+    left: 0,
+    background: "#141414",
+    border: "1px solid #2a2a2a",
+    borderRadius: 4,
+    zIndex: 100,
+    minWidth: 80,
+    padding: 2,
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 1,
+  },
+  indMenuItem: {
+    background: "transparent",
+    border: "none",
+    padding: "4px 10px",
+    fontSize: 11,
+    fontFamily: "'JetBrains Mono', monospace",
+    color: "#c0c0c0",
+    cursor: "pointer",
+    textAlign: "left" as const,
+    borderRadius: 3,
+    letterSpacing: "0.04em",
+  },
+  pillGroup: {
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: 4,
+  },
+  pill: {
+    display: "flex",
+    alignItems: "center",
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid #2a2a2a",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  pillLabel: {
+    background: "transparent",
+    border: "none",
+    padding: "1px 6px",
+    fontSize: 9,
+    fontFamily: "'JetBrains Mono', monospace",
+    color: "#aaa",
+    cursor: "pointer",
+    letterSpacing: "0.04em",
+  },
+  pillRemove: {
+    background: "transparent",
+    border: "none",
+    padding: "0 5px",
+    fontSize: 11,
+    color: "#555",
+    cursor: "pointer",
+    lineHeight: 1,
   },
 };

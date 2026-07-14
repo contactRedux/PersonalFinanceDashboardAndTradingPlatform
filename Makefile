@@ -1,4 +1,4 @@
-.PHONY: dev dev-backend dev-frontend test lint build clean migrate help
+.PHONY: dev dev-backend dev-frontend test lint build clean migrate load-test help tf-plan tf-apply k8s-deploy
 
 # ─── Default ──────────────────────────────────────────────────────────────────
 help:
@@ -12,6 +12,7 @@ help:
 	@echo "  make lint          Run all linters (ruff + eslint)"
 	@echo "  make build         Build production Docker images"
 	@echo "  make migrate       Run database migrations (alembic)"
+	@echo "  make load-test     Run k6 load tests (ws_market + rest_auth)"
 	@echo "  make clean         Remove build artifacts and caches"
 	@echo ""
 
@@ -24,6 +25,12 @@ dev-backend:
 
 dev-frontend:
 	cd frontend && npm run dev
+
+# ─── Load Testing ─────────────────────────────────────────────────────────────
+load-test:
+	@echo "Running k6 load tests..."
+	k6 run tests/load/ws_market.js
+	k6 run tests/load/rest_auth.js
 
 # ─── Testing ──────────────────────────────────────────────────────────────────
 test: test-backend test-frontend
@@ -70,3 +77,13 @@ clean:
 	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf frontend/.next frontend/out
 	@echo "Clean complete."
+
+# ─── Infrastructure ───────────────────────────────────────────────────────────
+tf-plan:
+	cd infra/terraform && terraform plan
+
+tf-apply:
+	cd infra/terraform && terraform apply
+
+k8s-deploy:
+	kubectl apply -f infra/k8s/

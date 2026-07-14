@@ -12,8 +12,6 @@ Tests:
 
 from __future__ import annotations
 
-import math
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,7 +22,11 @@ from backtesting.engine.vectorized import VectorizedEngine
 from backtesting.optimization.monte_carlo import MonteCarlo
 from backtesting.optimization.walk_forward import WalkForwardOptimizer
 from backtesting.reporting.html_report import generate_html_report
+from backtesting.strategies.bollinger_band import BollingerBandStrategy
+from backtesting.strategies.macd_cross import MACDCrossStrategy
+from backtesting.strategies.rsi_mean_reversion import RSIMeanReversionStrategy
 from backtesting.strategies.sma_cross import SmaCrossStrategy
+from backtesting.strategies.vwap_reversion import VWAPReversionStrategy
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -439,3 +441,204 @@ class TestHtmlReport:
         )
         html = generate_html_report(r)
         assert "No trades" in html
+
+
+# ─── New Strategies (ST-E) ────────────────────────────────────────────────────
+
+
+class TestRSIMeanReversionStrategy:
+    def test_signals_length_matches_data(self, flat_data: pd.DataFrame) -> None:
+        strategy = RSIMeanReversionStrategy()
+        signals = strategy.generate_signals(flat_data)
+        assert len(signals) == len(flat_data)
+
+    def test_signals_only_1_0_minus1(self, flat_data: pd.DataFrame) -> None:
+        strategy = RSIMeanReversionStrategy(allow_short=True)
+        signals = strategy.generate_signals(flat_data)
+        assert set(signals.unique()).issubset({-1, 0, 1})
+
+    def test_long_only_no_short_signals(self, flat_data: pd.DataFrame) -> None:
+        strategy = RSIMeanReversionStrategy(allow_short=False)
+        signals = strategy.generate_signals(flat_data)
+        assert (signals == -1).sum() == 0
+
+    def test_invalid_period_raises(self) -> None:
+        with pytest.raises(ValueError):
+            RSIMeanReversionStrategy(period=1)
+
+    def test_invalid_threshold_raises(self) -> None:
+        with pytest.raises(ValueError):
+            RSIMeanReversionStrategy(oversold=70, overbought=30)
+
+    def test_metrics_keys_present(self, flat_data: pd.DataFrame) -> None:
+        engine = VectorizedEngine()
+        result = engine.run(flat_data, RSIMeanReversionStrategy())
+        result.compute_metrics()
+        assert hasattr(result, "total_return_pct")
+
+
+class TestMACDCrossStrategy:
+    def test_signals_length_matches_data(self, trending_data: pd.DataFrame) -> None:
+        strategy = MACDCrossStrategy()
+        signals = strategy.generate_signals(trending_data)
+        assert len(signals) == len(trending_data)
+
+    def test_signals_only_1_0_minus1(self, trending_data: pd.DataFrame) -> None:
+        strategy = MACDCrossStrategy(allow_short=True)
+        signals = strategy.generate_signals(trending_data)
+        assert set(signals.unique()).issubset({-1, 0, 1})
+
+    def test_fast_must_be_less_than_slow(self) -> None:
+        with pytest.raises(ValueError):
+            MACDCrossStrategy(fast=30, slow=12)
+
+    def test_metrics_keys_present(self, trending_data: pd.DataFrame) -> None:
+        engine = VectorizedEngine()
+        result = engine.run(trending_data, MACDCrossStrategy())
+        result.compute_metrics()
+        assert hasattr(result, "sharpe_ratio")
+
+
+class TestBollingerBandStrategy:
+    def test_signals_length_matches_data(self, flat_data: pd.DataFrame) -> None:
+        strategy = BollingerBandStrategy()
+        signals = strategy.generate_signals(flat_data)
+        assert len(signals) == len(flat_data)
+
+    def test_signals_only_1_0_minus1(self, flat_data: pd.DataFrame) -> None:
+        strategy = BollingerBandStrategy(allow_short=True)
+        signals = strategy.generate_signals(flat_data)
+        assert set(signals.unique()).issubset({-1, 0, 1})
+
+    def test_invalid_period_raises(self) -> None:
+        with pytest.raises(ValueError):
+            BollingerBandStrategy(period=1)
+
+    def test_invalid_std_dev_raises(self) -> None:
+        with pytest.raises(ValueError):
+            BollingerBandStrategy(std_dev=0)
+
+    def test_metrics_keys_present(self, flat_data: pd.DataFrame) -> None:
+        engine = VectorizedEngine()
+        result = engine.run(flat_data, BollingerBandStrategy())
+        result.compute_metrics()
+        assert hasattr(result, "win_rate")
+
+
+class TestVWAPReversionStrategy:
+    def test_signals_length_matches_data(self, trending_data: pd.DataFrame) -> None:
+        strategy = VWAPReversionStrategy()
+        signals = strategy.generate_signals(trending_data)
+        assert len(signals) == len(trending_data)
+
+    def test_signals_only_1_0_minus1(self, trending_data: pd.DataFrame) -> None:
+        strategy = VWAPReversionStrategy(allow_short=True)
+        signals = strategy.generate_signals(trending_data)
+        assert set(signals.unique()).issubset({-1, 0, 1})
+
+    def test_invalid_threshold_raises(self) -> None:
+        with pytest.raises(ValueError):
+            VWAPReversionStrategy(threshold_pct=-1)
+
+    def test_works_without_volume(self) -> None:
+        """Strategy should handle zero-volume data gracefully."""
+        rng = np.random.default_rng(5)
+        close = 100.0 + rng.normal(0, 1.0, 100).cumsum() * 0.05
+        df = pd.DataFrame(
+            {
+                "open": close,
+                "high": close + 0.5,
+                "low": close - 0.5,
+                "close": close,
+                "volume": np.zeros(100),
+            },
+            index=pd.date_range("2022-01-01", periods=100, freq="B"),
+        )
+        strategy = VWAPReversionStrategy()
+        signals = strategy.generate_signals(df)
+        assert len(signals) == 100
+
+    def test_metrics_keys_present(self, trending_data: pd.DataFrame) -> None:
+        engine = VectorizedEngine()
+        result = engine.run(trending_data, VWAPReversionStrategy())
+        result.compute_metrics()
+        assert hasattr(result, "total_trades")
+
+
+# ─── BayesianOptimizer (ST-K) ──────────────────────────────────────────────────
+
+
+class TestBayesianOptimizer:
+    def test_returns_best_params(self, trending_data: pd.DataFrame) -> None:
+        """Optimizer returns a result with best_params dict."""
+        from backtesting.optimization.bayesian import BayesianOptimizer  # noqa: PLC0415
+
+        opt = BayesianOptimizer(
+            strategy_class=SmaCrossStrategy,
+            param_space={"fast": (5, 30, 5), "slow": (20, 80, 10)},
+            engine_cls=VectorizedEngine,
+            metric="sharpe_ratio",
+            n_trials=3,
+        )
+        result = opt.run(trending_data, symbol="TEST")
+        assert isinstance(result.best_params, dict)
+        assert "fast" in result.best_params
+        assert "slow" in result.best_params
+
+    def test_best_params_within_space(self, trending_data: pd.DataFrame) -> None:
+        """Best params must be within the declared search space."""
+        from backtesting.optimization.bayesian import BayesianOptimizer  # noqa: PLC0415
+
+        opt = BayesianOptimizer(
+            strategy_class=SmaCrossStrategy,
+            param_space={"fast": (5, 30, 5), "slow": (20, 80, 10)},
+            engine_cls=VectorizedEngine,
+            n_trials=3,
+        )
+        result = opt.run(trending_data)
+        assert 5 <= result.best_params["fast"] <= 30
+        assert 20 <= result.best_params["slow"] <= 80
+
+    def test_n_trials_matches_result(self, trending_data: pd.DataFrame) -> None:
+        """result.n_trials equals the number of completed trials."""
+        from backtesting.optimization.bayesian import BayesianOptimizer  # noqa: PLC0415
+
+        opt = BayesianOptimizer(
+            strategy_class=SmaCrossStrategy,
+            param_space={"fast": (5, 25, 5), "slow": (30, 60, 10)},
+            engine_cls=VectorizedEngine,
+            n_trials=4,
+        )
+        result = opt.run(trending_data)
+        assert result.n_trials == len(result.trials) == 4
+
+    def test_trials_list_has_correct_fields(self, trending_data: pd.DataFrame) -> None:
+        """Every trial dict has number, params, value, state keys."""
+        from backtesting.optimization.bayesian import BayesianOptimizer  # noqa: PLC0415
+
+        opt = BayesianOptimizer(
+            strategy_class=SmaCrossStrategy,
+            param_space={"fast": (5, 20, 5), "slow": (25, 60, 10)},
+            engine_cls=VectorizedEngine,
+            n_trials=3,
+        )
+        result = opt.run(trending_data)
+        for trial in result.trials:
+            assert "number" in trial
+            assert "params" in trial
+            assert "value" in trial
+            assert "state" in trial
+
+    def test_metric_stored_in_result(self, trending_data: pd.DataFrame) -> None:
+        """Result.metric matches the requested metric name."""
+        from backtesting.optimization.bayesian import BayesianOptimizer  # noqa: PLC0415
+
+        opt = BayesianOptimizer(
+            strategy_class=SmaCrossStrategy,
+            param_space={"fast": (5, 20, 5), "slow": (25, 60, 10)},
+            engine_cls=VectorizedEngine,
+            metric="total_return_pct",
+            n_trials=3,
+        )
+        result = opt.run(trending_data)
+        assert result.metric == "total_return_pct"
