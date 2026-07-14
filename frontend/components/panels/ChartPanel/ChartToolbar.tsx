@@ -48,6 +48,12 @@ interface ChartToolbarProps {
   onAddIndicator: (indicator: IndicatorConfig) => void;
   onRemoveIndicator: (id: string) => void;
   onToggleIndicator: (id: string) => void;
+  // Drawing tool state
+  fibActive?: boolean;
+  trendActive?: boolean;
+  onFibToggle?: () => void;
+  onTrendToggle?: () => void;
+  onClearDrawings?: () => void;
 }
 
 export function ChartToolbar({
@@ -61,6 +67,11 @@ export function ChartToolbar({
   onAddIndicator,
   onRemoveIndicator,
   onToggleIndicator,
+  fibActive = false,
+  trendActive = false,
+  onFibToggle,
+  onTrendToggle,
+  onClearDrawings,
 }: ChartToolbarProps) {
   const [symbolInput, setSymbolInput] = useState(symbol);
   const [indMenuOpen, setIndMenuOpen] = useState(false);
@@ -212,6 +223,47 @@ export function ChartToolbar({
                 </button>
               </div>
             ))}
+          </div>
+        </>
+      )}
+
+      {/* Drawing tools */}
+      {(onFibToggle || onTrendToggle) && (
+        <>
+          <div style={styles.sep} />
+          <div style={styles.group}>
+            {onFibToggle && (
+              <button
+                style={{ ...styles.btn, ...(fibActive ? styles.btnActive : {}) }}
+                onClick={onFibToggle}
+                aria-label="Fibonacci retracement tool"
+                aria-pressed={fibActive}
+                title="Fibonacci Retracement: click swing high then swing low"
+              >
+                Fib
+              </button>
+            )}
+            {onTrendToggle && (
+              <button
+                style={{ ...styles.btn, ...(trendActive ? styles.btnActive : {}) }}
+                onClick={onTrendToggle}
+                aria-label="Trendline tool"
+                aria-pressed={trendActive}
+                title="Trendline: click two points to draw"
+              >
+                Trend
+              </button>
+            )}
+            {onClearDrawings && (fibActive || trendActive) && (
+              <button
+                style={{ ...styles.btn, color: "#ef4444", borderColor: "rgba(239,68,68,0.3)" }}
+                onClick={onClearDrawings}
+                aria-label="Clear all drawings"
+                title="Clear all drawings"
+              >
+                ✕ Clear
+              </button>
+            )}
           </div>
         </>
       )}

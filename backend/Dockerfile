@@ -5,6 +5,18 @@ RUN useradd -m -u 1001 appuser
 
 WORKDIR /app
 
+# Install system-level dependencies required by WeasyPrint (PDF rendering)
+# and by PyTorch (libgomp for OpenMP parallelism).
+# ubi9-minimal ships with microdnf.
+RUN microdnf install -y \
+    pango \
+    cairo \
+    cairo-gobject \
+    gdk-pixbuf2 \
+    libffi \
+    libgomp \
+    && microdnf clean all
+
 # Install uv for fast dependency installation
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
@@ -18,6 +30,9 @@ RUN uv sync --frozen --no-dev
 COPY --chown=appuser:appuser app/ ./app/
 COPY --chown=appuser:appuser migrations/ ./migrations/
 COPY --chown=appuser:appuser alembic.ini ./
+
+# Create ML weights directory owned by non-root user
+RUN mkdir -p /app/data/ml_weights && chown -R 1001:1001 /app/data
 
 USER 1001
 

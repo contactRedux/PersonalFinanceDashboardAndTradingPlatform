@@ -218,6 +218,31 @@ vi.mock("@/components/panels/ChartPanel/ChartCanvas", () => ({
   ChartCanvas: vi.fn(() => <div data-testid="chart-canvas" />),
 }));
 
+// Mock drawing tool hooks — they import lightweight-charts which is ESM-only
+vi.mock("@/components/panels/ChartPanel/useFibonacciTool", () => ({
+  useFibonacciTool: vi.fn(() => ({
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+    clear: vi.fn(),
+    removeDrawing: vi.fn(),
+    isActive: false,
+    drawings: [],
+  })),
+  FIB_LEVELS: [],
+}));
+
+vi.mock("@/components/panels/ChartPanel/useTrendlineTool", () => ({
+  useTrendlineTool: vi.fn(() => ({
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+    clear: vi.fn(),
+    removeDrawing: vi.fn(),
+    isActive: false,
+    drawings: [],
+    hoverPrice: null,
+  })),
+}));
+
 // Also stub the store for this panel's tests — chartStore uses localStorage
 vi.mock("@/store/chartStore", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/store/chartStore")>();
@@ -230,6 +255,7 @@ vi.mock("@/store/chartStore", async (importOriginal) => {
           timeframe: "1d",
           chartType: "candlestick",
           indicators: [],
+          drawings: { fib: [], trendline: [] },
         },
       },
       setSymbol: vi.fn(),
@@ -238,6 +264,7 @@ vi.mock("@/store/chartStore", async (importOriginal) => {
       addIndicator: vi.fn(),
       removeIndicator: vi.fn(),
       toggleIndicator: vi.fn(),
+      setDrawings: vi.fn(),
     })),
   };
 });

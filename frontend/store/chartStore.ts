@@ -1,10 +1,12 @@
 /**
  * Zustand store — per-panel chart configuration.
- * symbol + timeframe + active indicators per panel.
+ * symbol + timeframe + active indicators + drawings per panel.
  */
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Timeframe } from "@/types/market";
+import type { FibDrawing } from "@/components/panels/ChartPanel/useFibonacciTool";
+import type { TrendlineDrawing } from "@/components/panels/ChartPanel/useTrendlineTool";
 
 export type ChartType = "candlestick" | "heikin_ashi" | "line" | "area" | "bar" | "baseline";
 
@@ -15,11 +17,18 @@ export interface IndicatorConfig {
   visible: boolean;
 }
 
+export interface PanelDrawings {
+  fib: FibDrawing[];
+  trendline: TrendlineDrawing[];
+}
+
 export interface PanelChartConfig {
   symbol: string;
   timeframe: Timeframe;
   chartType: ChartType;
   indicators: IndicatorConfig[];
+  /** Drawing tool results — persisted so workspace save/load can restore them. */
+  drawings: PanelDrawings;
 }
 
 interface ChartState {
@@ -30,6 +39,7 @@ interface ChartState {
   addIndicator: (panelId: string, indicator: IndicatorConfig) => void;
   removeIndicator: (panelId: string, indicatorId: string) => void;
   toggleIndicator: (panelId: string, indicatorId: string) => void;
+  setDrawings: (panelId: string, drawings: PanelDrawings) => void;
 }
 
 const defaultConfig = (): PanelChartConfig => ({
@@ -37,6 +47,7 @@ const defaultConfig = (): PanelChartConfig => ({
   timeframe: "1d",
   chartType: "candlestick",
   indicators: [],
+  drawings: { fib: [], trendline: [] },
 });
 
 export const useChartStore = create<ChartState>()(
@@ -108,6 +119,17 @@ export const useChartStore = create<ChartState>()(
             },
           };
         }),
+
+      setDrawings: (panelId, drawings) =>
+        set((state) => ({
+          panels: {
+            ...state.panels,
+            [panelId]: {
+              ...(state.panels[panelId] ?? defaultConfig()),
+              drawings,
+            },
+          },
+        })),
     }),
     { name: "quantnexus-chart-configs" }
   )

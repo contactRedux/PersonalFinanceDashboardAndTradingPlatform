@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.tasks.data_tasks",
         "app.tasks.alert_tasks",
         "app.tasks.order_tasks",
+        "app.tasks.ml_tasks",
     ],
 )
 
@@ -41,6 +42,10 @@ celery_app.conf.update(
         "record-ticks-every-60s": {
             "task": "tasks.record_ticks",
             "schedule": 60.0,
+        },
+        "evaluate-alerts-every-30s": {
+            "task": "tasks.evaluate_alerts",
+            "schedule": 30.0,
         },
     },
 )

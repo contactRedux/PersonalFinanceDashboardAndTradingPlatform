@@ -20,8 +20,10 @@ from app.models import (  # noqa: F401 — import ensures models are registered
     ohlcv,
     order,
     portfolio,
+    strategy_config,
     user,
     watchlist,
+    workspace,
 )
 from sqlalchemy import engine_from_config, pool
 

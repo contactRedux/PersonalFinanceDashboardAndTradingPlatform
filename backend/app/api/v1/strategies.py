@@ -2,7 +2,6 @@
 Saved strategy configurations — CRUD API.
 
 Strategies are stored in the PostgreSQL `strategy_configs` table.
-In demo / CI mode (no real DB) the store falls back to an in-memory dict.
 
 Endpoints:
   GET    /api/v1/strategies          — list saved strategies for current user
@@ -15,22 +14,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 import structlog
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser
+from app.dependencies import CurrentUser, DBSession
+from app.models.strategy_config import StrategyConfig
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
-
-# ─── In-memory fallback (used in tests / demo mode without a real DB) ─────────
-# A real deployment persists these rows in PostgreSQL via a `strategy_configs` table.
-# The fallback keeps strategies per user in a plain dict for this session only.
-
-_STORE: dict[str, dict[str, Any]] = {}
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -57,62 +52,109 @@ class StrategyListResponse(BaseModel):
     count: int
 
 
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _row_to_response(row: StrategyConfig) -> StrategyResponse:
+    return StrategyResponse(
+        id=str(row.id),
+        user_id=str(row.user_id),
+        name=row.name,
+        description=row.description or "",
+        config=row.config,
+        created_at=row.created_at.isoformat() if row.created_at else datetime.now(UTC).isoformat(),
+        updated_at=row.updated_at.isoformat() if row.updated_at else datetime.now(UTC).isoformat(),
+    )
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 
 @router.get("", response_model=StrategyListResponse)
-async def list_strategies(current_user: CurrentUser):
+async def list_strategies(current_user: CurrentUser, db: DBSession):
     """List saved strategy configs for the current user."""
-    user_id = current_user["sub"]
-    rows = [v for v in _STORE.values() if v["user_id"] == user_id]
-    rows.sort(key=lambda r: r["updated_at"], reverse=True)
+    user_id = uuid.UUID(current_user["sub"]) if _is_uuid(current_user["sub"]) else None
+    if user_id is None:
+        return StrategyListResponse(strategies=[], count=0)
+
+    result = await db.execute(
+        select(StrategyConfig)
+        .where(StrategyConfig.user_id == user_id, StrategyConfig.is_active == True)  # noqa: E712
+        .order_by(StrategyConfig.updated_at.desc())
+    )
+    rows = result.scalars().all()
     return StrategyListResponse(
-        strategies=[StrategyResponse(**r) for r in rows],
+        strategies=[_row_to_response(r) for r in rows],
         count=len(rows),
     )
 
 
 @router.post("", response_model=StrategyResponse, status_code=status.HTTP_201_CREATED)
-async def save_strategy(body: SaveStrategyRequest, current_user: CurrentUser):
+async def save_strategy(body: SaveStrategyRequest, current_user: CurrentUser, db: DBSession):
     """Save a new strategy configuration."""
-    # Validate node graph structure
     if "nodes" not in body.config or "edges" not in body.config:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="config must contain 'nodes' and 'edges'",
         )
 
-    strategy_id = str(uuid.uuid4())
-    now = datetime.now(UTC).isoformat()
-    record: dict[str, Any] = {
-        "id": strategy_id,
-        "user_id": current_user["sub"],
-        "name": body.name,
-        "description": body.description,
-        "config": body.config,
-        "created_at": now,
-        "updated_at": now,
-    }
-    _STORE[strategy_id] = record
-    logger.info("strategies.saved", user_id=current_user["sub"], name=body.name)
-    return StrategyResponse(**record)
+    user_id = uuid.UUID(current_user["sub"]) if _is_uuid(current_user["sub"]) else uuid.uuid4()
+    row = StrategyConfig(
+        user_id=user_id,
+        name=body.name,
+        description=body.description or None,
+        config=body.config,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    logger.info("strategies.saved", user_id=str(user_id), name=body.name)
+    return _row_to_response(row)
 
 
 @router.get("/{strategy_id}", response_model=StrategyResponse)
-async def get_strategy(strategy_id: str, current_user: CurrentUser):
+async def get_strategy(strategy_id: str, current_user: CurrentUser, db: DBSession):
     """Get a specific saved strategy by ID."""
-    record = _STORE.get(strategy_id)
-    if record is None or record["user_id"] != current_user["sub"]:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found.")
-    return StrategyResponse(**record)
+    row = await _get_owned(strategy_id, current_user["sub"], db)
+    return _row_to_response(row)
 
 
 @router.delete("/{strategy_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_strategy(strategy_id: str, current_user: CurrentUser):
-    """Delete a saved strategy."""
-    record = _STORE.get(strategy_id)
-    if record is None or record["user_id"] != current_user["sub"]:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found.")
-    del _STORE[strategy_id]
+async def delete_strategy(strategy_id: str, current_user: CurrentUser, db: DBSession):
+    """Delete a saved strategy (soft-delete via is_active=False)."""
+    row = await _get_owned(strategy_id, current_user["sub"], db)
+    row.is_active = False
+    await db.commit()
     logger.info("strategies.deleted", user_id=current_user["sub"], strategy_id=strategy_id)
     return None
+
+
+# ─── Private helpers ──────────────────────────────────────────────────────────
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except ValueError:
+        return False
+
+
+async def _get_owned(strategy_id: str, user_sub: str, db: AsyncSession) -> StrategyConfig:
+    """Fetch a strategy row, enforcing ownership. Raises 404 if missing or not owned."""
+    if not _is_uuid(strategy_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found.")
+    sid = uuid.UUID(strategy_id)
+    result = await db.execute(
+        select(StrategyConfig).where(
+            StrategyConfig.id == sid,
+            StrategyConfig.is_active == True,  # noqa: E712
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found.")
+    # Ownership check — compare as strings since JWT sub may not be a UUID in tests
+    if str(row.user_id) != user_sub:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Strategy not found.")
+    return row

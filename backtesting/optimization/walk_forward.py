@@ -26,12 +26,12 @@ Example::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from itertools import product
 from typing import Any
 
 import pandas as pd
 
 from backtesting.engine.base import BacktestResult
+from backtesting.optimization.grid_search import GridSearchOptimizer, expand_grid
 
 
 @dataclass
@@ -76,10 +76,8 @@ class WalkForwardResult:
 
 
 def _expand_grid(param_grid: dict[str, list[Any]]) -> list[dict[str, Any]]:
-    """Cartesian product of param_grid values."""
-    keys = list(param_grid.keys())
-    combos = list(product(*param_grid.values()))
-    return [dict(zip(keys, combo)) for combo in combos]
+    """Cartesian product of param_grid values (delegates to grid_search.expand_grid)."""
+    return expand_grid(param_grid)
 
 
 class WalkForwardOptimizer:

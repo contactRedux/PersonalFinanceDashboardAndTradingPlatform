@@ -10,8 +10,10 @@ from app.models.fundamental import Fundamental
 from app.models.ohlcv import OHLCV, Tick
 from app.models.order import Order
 from app.models.portfolio import Portfolio, Position
+from app.models.strategy_config import StrategyConfig
 from app.models.user import User
 from app.models.watchlist import Watchlist
+from app.models.workspace import Workspace, WorkspaceMember
 
 __all__ = [
     "User",
@@ -26,4 +28,7 @@ __all__ = [
     "EconomicEvent",
     "DashboardLayout",
     "AuditLog",
+    "StrategyConfig",
+    "Workspace",
+    "WorkspaceMember",
 ]

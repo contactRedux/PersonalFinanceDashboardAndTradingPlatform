@@ -11,6 +11,7 @@ from app.api.v1 import (
     journal,
     macro,
     market,
+    ml,
     news,
     options,
     orders,
@@ -39,3 +40,4 @@ api_v1_router.include_router(orders.router, prefix="/orders", tags=["orders"])
 api_v1_router.include_router(strategies.router, prefix="/strategies", tags=["strategies"])
 api_v1_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"])
 api_v1_router.include_router(journal.router, prefix="/journal", tags=["journal"])
+api_v1_router.include_router(ml.router, prefix="/ml", tags=["ml"])

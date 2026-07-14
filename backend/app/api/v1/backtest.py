@@ -12,15 +12,21 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
+from typing import Any
 
 import structlog
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.dependencies import CurrentUser
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
+
+# ─── In-process result store for PDF generation ───────────────────────────────
+# Keyed by run_id (UUID). TTL managed by Redis if available; fallback to dict.
+_RESULT_CACHE: dict[str, Any] = {}
 
 # ─── Add backtesting package to path (monorepo root) ─────────────────────────
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -58,6 +64,7 @@ class TradeSchema(BaseModel):
 
 
 class BacktestRunResponse(BaseModel):
+    run_id: str  # UUID for PDF report retrieval
     symbol: str
     timeframe: str
     start: str
@@ -309,7 +316,16 @@ async def run_backtest(body: BacktestRunRequest, current_user: CurrentUser):
         for t in result.trades
     ]
 
+    # Store result for PDF generation (in-process; TTL via LRU if needed)
+    run_id = str(uuid.uuid4())
+    _RESULT_CACHE[run_id] = result
+    # Cap cache size at 100 entries
+    if len(_RESULT_CACHE) > 100:
+        oldest = next(iter(_RESULT_CACHE))
+        _RESULT_CACHE.pop(oldest, None)
+
     return BacktestRunResponse(
+        run_id=run_id,
         symbol=result.symbol,
         timeframe=result.timeframe,
         start=str(result.start.date()),
@@ -459,4 +475,133 @@ async def run_bayesian_optimize(body: OptimizeRequest, current_user: CurrentUser
             )
             for t in result.trials
         ],
+    )
+
+
+# ─── Grid Search Optimizer ────────────────────────────────────────────────────
+
+
+class GridSearchRequest(BaseModel):
+    symbol: str = Field("AAPL", description="Ticker symbol")
+    timeframe: str = Field("1d", description="Bar timeframe")
+    start: str = Field("2022-01-01", description="ISO date YYYY-MM-DD")
+    end: str = Field("2024-01-01", description="ISO date YYYY-MM-DD")
+    strategy: str = Field("sma_cross", description="Strategy name")
+    param_space: dict = Field(
+        default_factory=lambda: {"fast": [10, 20, 30], "slow": [40, 50, 60]},
+        description="Mapping of param_name → list of values",
+    )
+    metric: str = Field("sharpe_ratio", description="Metric to maximise")
+    initial_capital: float = Field(100_000.0, gt=0)
+
+
+class GridSearchResponse(BaseModel):
+    best_params: dict
+    best_value: float
+    metric: str
+    n_combinations: int
+    top_results: list[dict]
+
+
+@router.post("/grid-search", response_model=GridSearchResponse)
+async def run_grid_search(body: GridSearchRequest, current_user: CurrentUser):
+    """
+    Run exhaustive grid search optimization for a strategy.
+
+    Returns best params, best metric value, and all evaluated combinations ranked.
+    """
+    try:
+        from backtesting.engine.vectorized import VectorizedEngine  # noqa: PLC0415
+        from backtesting.optimization.grid_search import GridSearchOptimizer  # noqa: PLC0415
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Grid search optimizer not available: {exc}",
+        ) from exc
+
+    strategy_cls = _get_strategy_cls(body.strategy)
+    data = _fetch_data(body.symbol, body.timeframe, body.start, body.end)
+
+    # param_space for grid search is list of values per param
+    for name, values in body.param_space.items():
+        if not isinstance(values, list) or len(values) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"param_space['{name}'] must be a non-empty list of values",
+            )
+
+    optimizer = GridSearchOptimizer(
+        strategy_class=strategy_cls,
+        param_space=body.param_space,
+        engine_cls=VectorizedEngine,
+        metric=body.metric,
+        engine_kwargs={"initial_capital": body.initial_capital},
+    )
+
+    try:
+        result = optimizer.run(data, symbol=body.symbol, timeframe=body.timeframe)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("backtest.grid_search.error", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Grid search optimization failed.",
+        ) from exc
+
+    return GridSearchResponse(
+        best_params=result.best_params,
+        best_value=result.best_value,
+        metric=result.metric,
+        n_combinations=result.n_combinations,
+        top_results=result.all_results[:20],
+    )
+
+
+# ─── PDF Report ───────────────────────────────────────────────────────────────
+
+
+@router.get("/{run_id}/report/pdf")
+async def get_pdf_report(run_id: str, current_user: CurrentUser):
+    """
+    Stream the PDF performance report for a completed backtest run.
+
+    run_id must match a run_id returned by POST /backtest/run.
+    Report is generated on-demand via WeasyPrint from the HTML report template.
+    """
+    result = _RESULT_CACHE.get(run_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Backtest result not found. run_id may have expired or be invalid.",
+        )
+
+    try:
+        import sys  # noqa: PLC0415, F811
+
+        # Ensure backtesting package is on path
+        repo_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        )
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+
+        from backtesting.reporting.pdf_report import generate_pdf_report  # noqa: PLC0415
+
+        pdf_bytes = generate_pdf_report(result)
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"PDF generation not available: {exc}",
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.error("backtest.pdf_report.error", run_id=run_id, error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="PDF generation failed.",
+        ) from exc
+
+    filename = f"backtest_{result.symbol}_{run_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

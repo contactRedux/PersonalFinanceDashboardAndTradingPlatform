@@ -11,16 +11,21 @@ Key series IDs:
   - UNRATE: Unemployment Rate
   - VIXCLS: CBOE VIX
   - DTWEXBGS: US Dollar Index (DXY proxy)
+
+Caching: all FRED API responses are cached in Redis (TTL: 3600s = 1 hour).
 """
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import structlog
 
 from app.config import get_settings
+
+_CACHE_TTL = 3600  # 1 hour
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -54,10 +59,47 @@ YIELD_CURVE_SERIES: dict[str, str] = {
 }
 
 
+# ─── Redis cache helpers ──────────────────────────────────────────────────────
+
+
+async def _cache_get(key: str) -> str | None:
+    """Return cached string value or None (fails silently if Redis unavailable)."""
+    try:
+        from app.data.cache.redis_client import get_redis_pool  # noqa: PLC0415
+
+        redis = await get_redis_pool()
+        return await redis.get(key)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def _cache_set(key: str, value: str, ttl: int = _CACHE_TTL) -> None:
+    """Store a string value in Redis with a TTL (fails silently)."""
+    try:
+        from app.data.cache.redis_client import get_redis_pool  # noqa: PLC0415
+
+        redis = await get_redis_pool()
+        await redis.setex(key, ttl, value)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ─── FRED fetch functions (with Redis caching) ────────────────────────────────
+
+
 async def fetch_series_latest(series_id: str) -> float | None:
-    """Fetch the most recent observation for a FRED series."""
+    """Fetch the most recent observation for a FRED series (Redis-cached, TTL 1h)."""
     if not settings.fred_api_key:
         return None
+
+    cache_key = f"fred:latest:{series_id}"
+    cached = await _cache_get(cache_key)
+    if cached is not None:
+        try:
+            return float(cached)
+        except ValueError:
+            pass
+
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
@@ -74,7 +116,9 @@ async def fetch_series_latest(series_id: str) -> float | None:
                 return None
             obs = resp.json().get("observations", [])
             if obs and obs[0].get("value") not in (".", ""):
-                return float(obs[0]["value"])
+                value = float(obs[0]["value"])
+                await _cache_set(cache_key, str(value))
+                return value
     except Exception:  # noqa: BLE001
         logger.debug("fred.fetch_latest_error", series_id=series_id)
     return None
@@ -86,7 +130,7 @@ async def fetch_series_history(
     limit: int = 100,
 ) -> list[dict]:
     """
-    Fetch time series observations from FRED.
+    Fetch time series observations from FRED (Redis-cached, TTL 1h).
     Returns: [{"date": "YYYY-MM-DD", "value": float}, ...]
     """
     if not settings.fred_api_key:
@@ -95,6 +139,14 @@ async def fetch_series_history(
         start = (date.today() - timedelta(days=365 * 2)).isoformat()
     else:
         start = observation_start
+
+    cache_key = f"fred:history:{series_id}:{start}:{limit}"
+    cached = await _cache_get(cache_key)
+    if cached is not None:
+        try:
+            return json.loads(cached)
+        except (ValueError, json.JSONDecodeError):
+            pass
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -111,11 +163,13 @@ async def fetch_series_history(
             )
             if resp.status_code != 200:
                 return []
-            return [
+            result = [
                 {"date": o["date"], "value": float(o["value"])}
                 for o in resp.json().get("observations", [])
                 if o.get("value") not in (".", "")
             ]
+            await _cache_set(cache_key, json.dumps(result))
+            return result
     except Exception:  # noqa: BLE001
         logger.debug("fred.fetch_history_error", series_id=series_id)
     return []

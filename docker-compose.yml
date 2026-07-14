@@ -72,6 +72,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - ml_weights:/app/data/ml_weights
     restart: unless-stopped
 
   celery_worker:
@@ -88,6 +89,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
+      - ml_weights:/app/data/ml_weights
     restart: unless-stopped
 
   # ─── Front-End ────────────────────────────────────────────────────────────
@@ -159,3 +161,4 @@ volumes:
   mongodata:
   prometheusdata:
   grafanadata:
+  ml_weights:

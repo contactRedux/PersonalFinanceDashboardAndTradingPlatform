@@ -9,7 +9,7 @@
  * Renders indicator overlays (SMA, EMA, WMA, BB, RSI, MACD) as LineSeries.
  */
 
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import {
   createChart,
   CandlestickSeries,
@@ -62,6 +62,14 @@ interface ChartCanvasProps {
   indicators?: IndicatorConfig[];
   /** Optional VPVR data rendered as a canvas overlay on the right side. */
   vpvr?: VPVRLevel[];
+  /**
+   * If provided, ChartCanvas will populate these refs so the parent (ChartPanel)
+   * can share them with drawing-tool hooks.
+   */
+  chartRef?: React.RefObject<IChartApi | null>;
+  seriesRef?: React.RefObject<ISeriesApi<
+    "Candlestick" | "Line" | "Area" | "Bar" | "Baseline"
+  > | null>;
 }
 
 export function ChartCanvas({
@@ -71,12 +79,18 @@ export function ChartCanvas({
   height = 420,
   indicators = [],
   vpvr,
+  chartRef: externalChartRef,
+  seriesRef: externalSeriesRef,
 }: ChartCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick" | "Line" | "Area" | "Bar" | "Baseline"> | null>(
+  const internalChartRef = useRef<IChartApi | null>(null);
+  const internalSeriesRef = useRef<ISeriesApi<"Candlestick" | "Line" | "Area" | "Bar" | "Baseline"> | null>(
     null
   );
+
+  // Resolve to external refs if provided, otherwise use internal refs
+  const chartRef = externalChartRef ?? internalChartRef;
+  const seriesRef = externalSeriesRef ?? internalSeriesRef;
   // Map: indicator id (or id+"_upper" etc.) → LineSeries
   const overlayRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
   const vpvrCanvasRef = useRef<HTMLCanvasElement>(null);

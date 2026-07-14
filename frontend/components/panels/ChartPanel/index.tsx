@@ -8,9 +8,17 @@
  *   - All timeframes: 1m, 5m, 15m, 1h, 4h, 1d, 1w
  *   - Real-time price updates from useMarketData → marketDataStore
  *   - Panel configuration persisted in chartStore
+ *   - Fibonacci retracement and Trendline drawing tools (drawings persisted in chartStore)
  */
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { Panel } from "@/components/layout/Panel";
 import { ChartCanvas } from "./ChartCanvas";
 import { ChartToolbar } from "./ChartToolbar";
@@ -21,29 +29,68 @@ import type { BarData } from "@/lib/api/market";
 import type { Timeframe } from "@/types/market";
 import type { ChartType } from "@/store/chartStore";
 import type { Quote } from "@/types/market";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
+import { useFibonacciTool } from "./useFibonacciTool";
+import { useTrendlineTool } from "./useTrendlineTool";
+
+// ─── ChartCanvas imperative handle ──────────────────────────────────────────
+
+export interface ChartCanvasHandle {
+  chartRef: React.RefObject<IChartApi | null>;
+  seriesRef: React.RefObject<ISeriesApi<
+    "Candlestick" | "Line" | "Area" | "Bar" | "Baseline"
+  > | null>;
+}
 
 interface ChartPanelProps {
   panelId?: string;
 }
 
 export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
-  const { panels, setSymbol, setTimeframe, setChartType, addIndicator, removeIndicator, toggleIndicator } =
-    useChartStore();
+  const {
+    panels,
+    setSymbol,
+    setTimeframe,
+    setChartType,
+    addIndicator,
+    removeIndicator,
+    toggleIndicator,
+    setDrawings,
+  } = useChartStore();
+
   const config = panels[panelId] ?? {
     symbol: "AAPL",
     timeframe: "1d" as Timeframe,
     chartType: "candlestick" as ChartType,
     indicators: [],
+    drawings: { fib: [], trendline: [] },
   };
 
   const [bars, setBars] = useState<BarData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Shared chart + series refs — lifted up so drawing tools can access them
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<
+    "Candlestick" | "Line" | "Area" | "Bar" | "Baseline"
+  > | null>(null);
+
   // Subscribe to live price ticks for the active symbol
   const latestQuote: Quote | undefined = useMarketDataStore(
     (s) => s.quotes[config.symbol]
   );
+
+  // Drawing tools
+  const fib = useFibonacciTool(chartRef, seriesRef);
+  const trendline = useTrendlineTool(chartRef, bars, seriesRef);
+
+  // Persist drawings when they change
+  useEffect(() => {
+    if (setDrawings) {
+      setDrawings(panelId, { fib: fib.drawings, trendline: trendline.drawings });
+    }
+  }, [fib.drawings, trendline.drawings, panelId, setDrawings]);
 
   // Fetch bars when symbol or timeframe changes
   useEffect(() => {
@@ -95,6 +142,30 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
     [panelId, toggleIndicator]
   );
 
+  // Drawing tool callbacks
+  const handleFibToggle = useCallback(() => {
+    if (fib.isActive) {
+      fib.deactivate();
+    } else {
+      trendline.deactivate(); // deactivate the other tool first
+      fib.activate();
+    }
+  }, [fib, trendline]);
+
+  const handleTrendToggle = useCallback(() => {
+    if (trendline.isActive) {
+      trendline.deactivate();
+    } else {
+      fib.deactivate(); // deactivate the other tool first
+      trendline.activate();
+    }
+  }, [fib, trendline]);
+
+  const handleClearDrawings = useCallback(() => {
+    fib.clear();
+    trendline.clear();
+  }, [fib, trendline]);
+
   const toolbar = (
     <ChartToolbar
       symbol={config.symbol}
@@ -107,6 +178,11 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
       onAddIndicator={handleAddIndicator}
       onRemoveIndicator={handleRemoveIndicator}
       onToggleIndicator={handleToggleIndicator}
+      fibActive={fib.isActive}
+      trendActive={trendline.isActive}
+      onFibToggle={handleFibToggle}
+      onTrendToggle={handleTrendToggle}
+      onClearDrawings={handleClearDrawings}
     />
   );
 
@@ -130,6 +206,8 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
           latestQuote={latestQuote}
           indicators={config.indicators}
           height={420}
+          chartRef={chartRef}
+          seriesRef={seriesRef}
         />
       )}
     </Panel>
