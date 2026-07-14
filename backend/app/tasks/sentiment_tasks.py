@@ -8,6 +8,7 @@ Task flow:
   1. score_article(article_id) — FinBERT + optionally GPT-4o
   2. update_ticker_sentiment_aggregate(symbol) — recompute aggregate
 """
+
 from __future__ import annotations
 
 import json
@@ -56,11 +57,10 @@ def score_article(self, article: dict) -> dict:  # type: ignore[override]
         gpt4o_result = None
         if should_use_gpt4o(impact_category, finbert_result.get("confidence", 0.5)):
             import asyncio
+
             try:
                 loop = asyncio.new_event_loop()
-                gpt4o_result = loop.run_until_complete(
-                    score_text_gpt4o(text_to_score, headline)
-                )
+                gpt4o_result = loop.run_until_complete(score_text_gpt4o(text_to_score, headline))
                 loop.close()
             except Exception:
                 logger.warning("tasks.score_article.gpt4o_failed")
@@ -123,6 +123,7 @@ def update_ticker_sentiment_aggregate(symbol: str) -> dict:
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
 
+
 def _classify_impact(headline: str) -> str:
     """Simple keyword-based impact classification."""
     headline_lower = headline.lower()
@@ -145,6 +146,7 @@ def _save_to_mongodb(article: dict) -> None:
         import pymongo
 
         from app.config import get_settings
+
         settings = get_settings()
         client = pymongo.MongoClient(settings.mongodb_url)
         db = client[settings.mongodb_database]
@@ -165,6 +167,7 @@ def _fetch_recent_articles_for_symbol(symbol: str, hours: int = 24) -> list[dict
         import pymongo
 
         from app.config import get_settings
+
         settings = get_settings()
         client = pymongo.MongoClient(settings.mongodb_url)
         db = client[settings.mongodb_database]
@@ -186,6 +189,7 @@ def _update_redis_sentiment(symbol: str, aggregate: dict) -> None:
         import redis
 
         from app.config import get_settings
+
         settings = get_settings()
         r = redis.from_url(settings.redis_url, decode_responses=True)
         r.setex(

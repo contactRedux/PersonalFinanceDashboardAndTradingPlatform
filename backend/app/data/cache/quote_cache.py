@@ -4,6 +4,7 @@ Latest quote cache — thin Redis Hash wrapper.
 Key structure:  quote:{symbol}  →  Hash of quote fields
 TTL: 60 seconds (stale if provider goes offline)
 """
+
 from __future__ import annotations
 
 import json
@@ -35,8 +36,7 @@ async def get_quotes(symbols: list[str]) -> dict[str, dict | None]:
         pipeline.hgetall(f"quote:{symbol.upper()}")
     results = await pipeline.execute()
     return {
-        symbol: (data if data else None)
-        for symbol, data in zip(symbols, results, strict=False)
+        symbol: (data if data else None) for symbol, data in zip(symbols, results, strict=False)
     }
 
 

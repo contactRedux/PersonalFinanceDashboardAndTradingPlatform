@@ -6,6 +6,7 @@ Handles:
   - Batch writes for efficiency
   - Both the SQLAlchemy ORM path and raw SQL for high-throughput
 """
+
 from __future__ import annotations
 
 import structlog

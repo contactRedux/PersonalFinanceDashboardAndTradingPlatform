@@ -6,6 +6,7 @@ GET /macro/yield-curve  — current US Treasury yield curve
 GET /macro/fred/{id}    — arbitrary FRED series historical data
 GET /macro/vix          — latest VIX and market volatility context
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

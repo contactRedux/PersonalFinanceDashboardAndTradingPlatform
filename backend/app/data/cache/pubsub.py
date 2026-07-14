@@ -5,6 +5,7 @@ Pattern:
   - Data ingestion services PUBLISH to channel:quotes:{symbol}
   - WebSocket handlers SUBSCRIBE and forward to connected clients
 """
+
 from __future__ import annotations
 
 import json

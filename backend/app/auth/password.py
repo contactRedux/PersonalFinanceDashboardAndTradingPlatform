@@ -2,6 +2,7 @@
 Password hashing using bcrypt directly (bcrypt 5.x compatible).
 NEVER store plaintext passwords.
 """
+
 from __future__ import annotations
 
 import bcrypt

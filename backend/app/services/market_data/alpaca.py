@@ -12,6 +12,7 @@ Configuration (from environment variables):
   ALPACA_BASE_URL    — Override for paper/live trading endpoint
   ALPACA_WS_URL      — WebSocket URL (default: wss://stream.data.alpaca.markets/v2/iex)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -35,8 +36,13 @@ _ALPACA_WS_STOCKS = "wss://stream.data.alpaca.markets/v2/iex"
 _ALPACA_WS_CRYPTO = "wss://stream.data.alpaca.markets/v1beta3/crypto/us"
 
 _TF_MAP = {
-    "1m": "1Min", "5m": "5Min", "15m": "15Min",
-    "1h": "1Hour", "4h": "4Hour", "1d": "1Day", "1w": "1Week",
+    "1m": "1Min",
+    "5m": "5Min",
+    "15m": "15Min",
+    "1h": "1Hour",
+    "4h": "4Hour",
+    "1d": "1Day",
+    "1w": "1Week",
 }
 
 
@@ -99,9 +105,7 @@ class AlpacaProvider(MarketDataProvider):
             for b in bars_data:
                 bars.append(
                     CanonicalBar(
-                        time=datetime.fromisoformat(
-                            b["t"].replace("Z", "+00:00")
-                        ),
+                        time=datetime.fromisoformat(b["t"].replace("Z", "+00:00")),
                         symbol=sym_upper,
                         exchange=b.get("x", "ALPACA"),
                         asset_class=asset_class,
@@ -167,9 +171,7 @@ class AlpacaProvider(MarketDataProvider):
         )
         return results
 
-    async def stream_quotes(
-        self, symbols: list[str]
-    ) -> AsyncGenerator[CanonicalQuote, None]:
+    async def stream_quotes(self, symbols: list[str]) -> AsyncGenerator[CanonicalQuote, None]:
         if not self._is_available():
             return
 
@@ -184,18 +186,26 @@ class AlpacaProvider(MarketDataProvider):
             try:
                 async with websockets.connect(ws_url) as ws:
                     # Authenticate
-                    await ws.send(json.dumps({
-                        "action": "auth",
-                        "key": settings.alpaca_api_key,
-                        "secret": _alpaca_secret(),
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "action": "auth",
+                                "key": settings.alpaca_api_key,
+                                "secret": _alpaca_secret(),
+                            }
+                        )
+                    )
                     await ws.recv()  # auth response
 
                     # Subscribe to quotes
-                    await ws.send(json.dumps({
-                        "action": "subscribe",
-                        "quotes": sub_syms,
-                    }))
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "action": "subscribe",
+                                "quotes": sub_syms,
+                            }
+                        )
+                    )
 
                     async for raw in ws:
                         messages = json.loads(raw)
@@ -211,8 +221,9 @@ class AlpacaProvider(MarketDataProvider):
                                 bid_size=float(msg.get("bs", 0)),
                                 ask_size=float(msg.get("as", 0)),
                                 timestamp=datetime.fromisoformat(
-                                    msg.get("t", datetime.now(UTC).isoformat())
-                                    .replace("Z", "+00:00")
+                                    msg.get("t", datetime.now(UTC).isoformat()).replace(
+                                        "Z", "+00:00"
+                                    )
                                 ),
                                 provider=self.name,
                                 asset_class=infer_asset_class(sym),

@@ -18,6 +18,9 @@ import { CorrelationMatrixPanel } from "@/components/panels/CorrelationMatrixPan
 import { EconomicCalendarPanel } from "@/components/panels/EconomicCalendarPanel";
 import { DarkPoolPanel } from "@/components/panels/DarkPoolPanel";
 import { CryptoPanel } from "@/components/panels/CryptoPanel";
+import { PerformancePanel } from "@/components/panels/PerformancePanel";
+import { MultiTimeframePanel } from "@/components/panels/MultiTimeframePanel";
+import { OrderEntryPanel } from "@/components/panels/OrderEntryPanel";
 import { MarketDataProvider } from "@/components/providers/MarketDataProvider";
 
 /**
@@ -110,6 +113,20 @@ export default function DashboardPage() {
 
         <div key="crypto">
           <CryptoPanel panelId="crypto" />
+        </div>
+
+        {/* ── Row 9 — Performance analytics + Multi-timeframe ── */}
+        <div key="performance">
+          <PerformancePanel panelId="performance" />
+        </div>
+
+        <div key="mtf">
+          <MultiTimeframePanel panelId="mtf" defaultSymbol="AAPL" />
+        </div>
+
+        {/* ── Row 10 — Order entry (paper trading) ── */}
+        <div key="order-entry">
+          <OrderEntryPanel panelId="order-entry" defaultSymbol="AAPL" />
         </div>
       </PanelGrid>
     </MarketDataProvider>

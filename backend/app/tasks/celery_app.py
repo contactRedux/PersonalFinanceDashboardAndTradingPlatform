@@ -3,6 +3,7 @@ Celery application factory.
 
 Workers: uv run celery -A app.tasks.celery_app worker --loglevel=info
 """
+
 from __future__ import annotations
 
 from celery import Celery

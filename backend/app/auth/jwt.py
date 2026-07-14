@@ -4,6 +4,7 @@ JWT creation and validation.
 Access tokens: short-lived (15 min), HS256-signed.
 Refresh tokens: longer-lived (7 days), stored in Redis for rotation/revocation.
 """
+
 from __future__ import annotations
 
 import secrets

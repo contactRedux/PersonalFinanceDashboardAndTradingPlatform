@@ -5,6 +5,7 @@ Records security-sensitive actions (auth events, trade mutations, config changes
 to the `audit_log` PostgreSQL table. All writes are fire-and-forget to avoid
 blocking request handlers. Failures are logged but never re-raised.
 """
+
 from __future__ import annotations
 
 import uuid

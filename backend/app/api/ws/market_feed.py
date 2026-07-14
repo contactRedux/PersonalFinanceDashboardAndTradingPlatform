@@ -9,6 +9,7 @@ Protocol:
   Client → Server:  {"action": "unsubscribe",  "symbols": ["AAPL"]}
   Server → Client:  {"type": "quote", "symbol": ..., "price": ..., ...}
 """
+
 from __future__ import annotations
 
 import asyncio

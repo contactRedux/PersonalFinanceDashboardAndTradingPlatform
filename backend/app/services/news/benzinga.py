@@ -4,6 +4,7 @@ Benzinga API adapter — structured financial news with ticker tagging.
 Benzinga provides pre-tagged ticker mentions, making it ideal as a
 primary financial news source. Requires a paid API key.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -54,16 +55,18 @@ async def fetch_benzinga_news(
             stocks = item.get("stocks", [])
             tickers = [s.get("name", "") for s in stocks if s.get("name")]
 
-            articles.append({
-                "source": "benzinga",
-                "source_id": str(item.get("id", "")),
-                "headline": item.get("title", ""),
-                "body": item.get("body", "") or item.get("teaser", ""),
-                "url": item.get("url", ""),
-                "published_at": item.get("created", datetime.now(UTC).isoformat()),
-                "tickers_mentioned": tickers,
-                "sentiment": None,
-            })
+            articles.append(
+                {
+                    "source": "benzinga",
+                    "source_id": str(item.get("id", "")),
+                    "headline": item.get("title", ""),
+                    "body": item.get("body", "") or item.get("teaser", ""),
+                    "url": item.get("url", ""),
+                    "published_at": item.get("created", datetime.now(UTC).isoformat()),
+                    "tickers_mentioned": tickers,
+                    "sentiment": None,
+                }
+            )
         return articles
 
     except Exception:

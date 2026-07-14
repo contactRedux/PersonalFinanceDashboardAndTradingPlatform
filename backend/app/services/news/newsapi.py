@@ -4,6 +4,7 @@ NewsAPI.org adapter — general news aggregation.
 Free tier: 100 requests/day, developer access only.
 Paid tier: no rate limit for production.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -52,16 +53,18 @@ async def fetch_financial_news(
 
         articles = []
         for a in data.get("articles", []):
-            articles.append({
-                "source": "newsapi",
-                "source_id": a.get("url", ""),
-                "headline": a.get("title", ""),
-                "body": a.get("content") or a.get("description") or "",
-                "url": a.get("url", ""),
-                "published_at": a.get("publishedAt", datetime.now(UTC).isoformat()),
-                "tickers_mentioned": [],  # filled by NER pipeline
-                "sentiment": None,
-            })
+            articles.append(
+                {
+                    "source": "newsapi",
+                    "source_id": a.get("url", ""),
+                    "headline": a.get("title", ""),
+                    "body": a.get("content") or a.get("description") or "",
+                    "url": a.get("url", ""),
+                    "published_at": a.get("publishedAt", datetime.now(UTC).isoformat()),
+                    "tickers_mentioned": [],  # filled by NER pipeline
+                    "sentiment": None,
+                }
+            )
         return articles
 
     except Exception:

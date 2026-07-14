@@ -7,7 +7,7 @@
  *   CorrelationMatrixPanel, EconomicCalendarPanel, DarkPoolPanel, CryptoPanel
  */
 
-import React from "react";
+import React, { act } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
@@ -160,30 +160,30 @@ import { CryptoPanel } from "@/components/panels/CryptoPanel";
 
 // ─── ScreenerPanel ────────────────────────────────────────────────────────────
 describe("ScreenerPanel", () => {
-  it("renders panel title SCREENER", () => {
-    render(<ScreenerPanel />);
+  it("renders panel title SCREENER", async () => {
+    await act(async () => { render(<ScreenerPanel />); });
     expect(screen.getByText("SCREENER")).toBeInTheDocument();
   });
 
-  it("renders default filter field select", () => {
-    render(<ScreenerPanel />);
+  it("renders default filter field select", async () => {
+    await act(async () => { render(<ScreenerPanel />); });
     const selects = screen.getAllByRole("combobox");
     expect(selects.length).toBeGreaterThanOrEqual(2); // field + operator + logic
   });
 
-  it("renders AND/OR logic selector", () => {
-    render(<ScreenerPanel />);
+  it("renders AND/OR logic selector", async () => {
+    await act(async () => { render(<ScreenerPanel />); });
     const logicSelect = screen.getByRole("combobox", { name: /logic/i });
     expect(logicSelect).toHaveValue("AND");
   });
 
-  it("renders ▶ SCAN run button", () => {
-    render(<ScreenerPanel />);
+  it("renders ▶ SCAN run button", async () => {
+    await act(async () => { render(<ScreenerPanel />); });
     expect(screen.getByRole("button", { name: /▶ scan/i })).toBeInTheDocument();
   });
 
-  it("renders + Add Filter button", () => {
-    render(<ScreenerPanel />);
+  it("renders + Add Filter button", async () => {
+    await act(async () => { render(<ScreenerPanel />); });
     expect(screen.getByRole("button", { name: /add filter/i })).toBeInTheDocument();
   });
 
@@ -234,13 +234,13 @@ describe("AlertsPanel", () => {
     });
   });
 
-  it("renders panel title ALERT MANAGER", () => {
-    render(<AlertsPanel />);
+  it("renders panel title ALERT MANAGER", async () => {
+    await act(async () => { render(<AlertsPanel />); });
     expect(screen.getByText("ALERT MANAGER")).toBeInTheDocument();
   });
 
-  it("shows MY ALERTS and + NEW tabs", () => {
-    render(<AlertsPanel />);
+  it("shows MY ALERTS and + NEW tabs", async () => {
+    await act(async () => { render(<AlertsPanel />); });
     expect(screen.getByRole("button", { name: /my alerts/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\+ new/i })).toBeInTheDocument();
   });
@@ -274,8 +274,8 @@ describe("AlertsPanel", () => {
 
 // ─── MacroPanel ───────────────────────────────────────────────────────────────
 describe("MacroPanel", () => {
-  it("renders panel title MACRO OVERVIEW", () => {
-    render(<MacroPanel />);
+  it("renders panel title MACRO OVERVIEW", async () => {
+    await act(async () => { render(<MacroPanel />); });
     expect(screen.getByText("MACRO OVERVIEW")).toBeInTheDocument();
   });
 
@@ -317,8 +317,8 @@ describe("MacroPanel", () => {
 
 // ─── HeatMapPanel ────────────────────────────────────────────────────────────
 describe("HeatMapPanel", () => {
-  it("renders panel title SECTOR HEAT MAP", () => {
-    render(<HeatMapPanel />);
+  it("renders panel title SECTOR HEAT MAP", async () => {
+    await act(async () => { render(<HeatMapPanel />); });
     expect(screen.getByText("SECTOR HEAT MAP")).toBeInTheDocument();
   });
 
@@ -346,19 +346,19 @@ describe("HeatMapPanel", () => {
 
 // ─── CorrelationMatrixPanel ───────────────────────────────────────────────────
 describe("CorrelationMatrixPanel", () => {
-  it("renders panel title CORRELATION MATRIX", () => {
-    render(<CorrelationMatrixPanel />);
+  it("renders panel title CORRELATION MATRIX", async () => {
+    await act(async () => { render(<CorrelationMatrixPanel />); });
     expect(screen.getByText("CORRELATION MATRIX")).toBeInTheDocument();
   });
 
-  it("renders symbol input field", () => {
-    render(<CorrelationMatrixPanel />);
+  it("renders symbol input field", async () => {
+    await act(async () => { render(<CorrelationMatrixPanel />); });
     const input = screen.getByRole("textbox", { name: /symbols/i });
     expect(input).toBeInTheDocument();
   });
 
-  it("renders GO apply button", () => {
-    render(<CorrelationMatrixPanel />);
+  it("renders GO apply button", async () => {
+    await act(async () => { render(<CorrelationMatrixPanel />); });
     expect(screen.getByRole("button", { name: /go/i })).toBeInTheDocument();
   });
 
@@ -380,13 +380,13 @@ describe("CorrelationMatrixPanel", () => {
 
 // ─── EconomicCalendarPanel ───────────────────────────────────────────────────
 describe("EconomicCalendarPanel", () => {
-  it("renders panel title ECONOMIC CALENDAR", () => {
-    render(<EconomicCalendarPanel />);
+  it("renders panel title ECONOMIC CALENDAR", async () => {
+    await act(async () => { render(<EconomicCalendarPanel />); });
     expect(screen.getByText("ECONOMIC CALENDAR")).toBeInTheDocument();
   });
 
-  it("renders HIGH, MEDIUM, LOW filter toggles", () => {
-    render(<EconomicCalendarPanel />);
+  it("renders HIGH, MEDIUM, LOW filter toggles", async () => {
+    await act(async () => { render(<EconomicCalendarPanel />); });
     expect(screen.getByRole("button", { name: /^high$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^medium$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^low$/i })).toBeInTheDocument();
@@ -428,8 +428,8 @@ describe("EconomicCalendarPanel", () => {
 
 // ─── DarkPoolPanel ────────────────────────────────────────────────────────────
 describe("DarkPoolPanel", () => {
-  it("renders panel title UNUSUAL OPTIONS ACTIVITY", () => {
-    render(<DarkPoolPanel />);
+  it("renders panel title UNUSUAL OPTIONS ACTIVITY", async () => {
+    await act(async () => { render(<DarkPoolPanel />); });
     expect(screen.getByText("UNUSUAL OPTIONS ACTIVITY")).toBeInTheDocument();
   });
 
@@ -441,13 +441,13 @@ describe("DarkPoolPanel", () => {
     expect(screen.getByText("SPY")).toBeInTheDocument();
   });
 
-  it("renders symbol filter input", () => {
-    render(<DarkPoolPanel />);
+  it("renders symbol filter input", async () => {
+    await act(async () => { render(<DarkPoolPanel />); });
     expect(screen.getByRole("textbox", { name: /filter symbol/i })).toBeInTheDocument();
   });
 
-  it("renders sort-by combobox with PREMIUM option", () => {
-    render(<DarkPoolPanel />);
+  it("renders sort-by combobox with PREMIUM option", async () => {
+    await act(async () => { render(<DarkPoolPanel />); });
     const sortSelect = screen.getByRole("combobox", { name: /sort by/i });
     expect(sortSelect).toBeInTheDocument();
     expect(sortSelect).toHaveValue("premium");
@@ -479,13 +479,13 @@ describe("DarkPoolPanel", () => {
 
 // ─── CryptoPanel ──────────────────────────────────────────────────────────────
 describe("CryptoPanel", () => {
-  it("renders panel title CRYPTO", () => {
-    render(<CryptoPanel />);
+  it("renders panel title CRYPTO", async () => {
+    await act(async () => { render(<CryptoPanel />); });
     expect(screen.getByText("CRYPTO")).toBeInTheDocument();
   });
 
-  it("shows FUNDING, MOVERS, ONCHAIN tab buttons", () => {
-    render(<CryptoPanel />);
+  it("shows FUNDING, MOVERS, ONCHAIN tab buttons", async () => {
+    await act(async () => { render(<CryptoPanel />); });
     expect(screen.getByRole("button", { name: /funding/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /movers/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /onchain/i })).toBeInTheDocument();

@@ -2,6 +2,7 @@
 TOTP (Time-based One-Time Password) for 2FA.
 Uses pyotp — RFC 6238 compliant.
 """
+
 from __future__ import annotations
 
 import pyotp

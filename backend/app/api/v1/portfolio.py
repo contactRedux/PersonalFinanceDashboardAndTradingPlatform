@@ -4,6 +4,7 @@ Portfolio REST endpoints.
 For now, serves paper-trading portfolio data from PostgreSQL.
 Live brokerage integration is deferred to the C++ execution engine phase.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -105,6 +106,7 @@ async def get_risk_metrics(current_user: CurrentUser, db: DBSession):
     Uses demo equity curve for UI development.
     """
     import random
+
     random.seed(42)
     # Synthetic daily returns for demo
     daily_returns = [random.gauss(0.001, 0.012) for _ in range(252)]
@@ -127,9 +129,7 @@ async def get_risk_metrics(current_user: CurrentUser, db: DBSession):
         "cvar_95": round(cvar_95, 4),
         "sharpe_ratio": round(sharpe, 4),
         "sortino_ratio": round(sortino, 4),
-        "calmar_ratio": round(
-            (sum(daily_returns) / 252 * 252) / mdd if mdd > 0 else 0.0, 4
-        ),
+        "calmar_ratio": round((sum(daily_returns) / 252 * 252) / mdd if mdd > 0 else 0.0, 4),
         "max_drawdown": round(mdd, 4),
         "max_drawdown_duration_days": mdd_duration,
         "beta": beta,

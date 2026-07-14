@@ -12,6 +12,7 @@ Key series IDs:
   - VIXCLS: CBOE VIX
   - DTWEXBGS: US Dollar Index (DXY proxy)
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -28,25 +29,25 @@ FRED_BASE = "https://api.stlouisfed.org/fred"
 
 # Canonical macro indicator definitions
 MACRO_SERIES: dict[str, dict] = {
-    "fed_funds_rate": {"id": "DFF",      "label": "Fed Funds Rate",         "unit": "%"},
-    "cpi":            {"id": "CPIAUCSL", "label": "CPI (YoY)",              "unit": "Index"},
-    "gdp":            {"id": "GDP",      "label": "GDP",                     "unit": "$B"},
-    "unemployment":   {"id": "UNRATE",   "label": "Unemployment Rate",       "unit": "%"},
-    "yield_spread":   {"id": "T10Y2Y",   "label": "10Y-2Y Spread",          "unit": "%"},
-    "breakeven_inf":  {"id": "T10YIE",   "label": "10Y Breakeven Inflation", "unit": "%"},
-    "dxy":            {"id": "DTWEXBGS", "label": "US Dollar Index",         "unit": "Index"},
+    "fed_funds_rate": {"id": "DFF", "label": "Fed Funds Rate", "unit": "%"},
+    "cpi": {"id": "CPIAUCSL", "label": "CPI (YoY)", "unit": "Index"},
+    "gdp": {"id": "GDP", "label": "GDP", "unit": "$B"},
+    "unemployment": {"id": "UNRATE", "label": "Unemployment Rate", "unit": "%"},
+    "yield_spread": {"id": "T10Y2Y", "label": "10Y-2Y Spread", "unit": "%"},
+    "breakeven_inf": {"id": "T10YIE", "label": "10Y Breakeven Inflation", "unit": "%"},
+    "dxy": {"id": "DTWEXBGS", "label": "US Dollar Index", "unit": "Index"},
 }
 
 # Treasury yield series for yield curve
 YIELD_CURVE_SERIES: dict[str, str] = {
-    "1M":  "DGS1MO",
-    "3M":  "DGS3MO",
-    "6M":  "DGS6MO",
-    "1Y":  "DGS1",
-    "2Y":  "DGS2",
-    "3Y":  "DGS3",
-    "5Y":  "DGS5",
-    "7Y":  "DGS7",
+    "1M": "DGS1MO",
+    "3M": "DGS3MO",
+    "6M": "DGS6MO",
+    "1Y": "DGS1",
+    "2Y": "DGS2",
+    "3Y": "DGS3",
+    "5Y": "DGS5",
+    "7Y": "DGS7",
     "10Y": "DGS10",
     "20Y": "DGS20",
     "30Y": "DGS30",
@@ -168,14 +169,14 @@ async def fetch_yield_curve() -> list[dict]:
 def build_demo_yield_curve() -> list[dict]:
     """Return a realistic demo yield curve (used when FRED key not configured)."""
     return [
-        {"maturity": "1M",  "yield": 5.32},
-        {"maturity": "3M",  "yield": 5.35},
-        {"maturity": "6M",  "yield": 5.25},
-        {"maturity": "1Y",  "yield": 5.01},
-        {"maturity": "2Y",  "yield": 4.64},
-        {"maturity": "3Y",  "yield": 4.42},
-        {"maturity": "5Y",  "yield": 4.28},
-        {"maturity": "7Y",  "yield": 4.30},
+        {"maturity": "1M", "yield": 5.32},
+        {"maturity": "3M", "yield": 5.35},
+        {"maturity": "6M", "yield": 5.25},
+        {"maturity": "1Y", "yield": 5.01},
+        {"maturity": "2Y", "yield": 4.64},
+        {"maturity": "3Y", "yield": 4.42},
+        {"maturity": "5Y", "yield": 4.28},
+        {"maturity": "7Y", "yield": 4.30},
         {"maturity": "10Y", "yield": 4.32},
         {"maturity": "20Y", "yield": 4.55},
         {"maturity": "30Y", "yield": 4.48},
@@ -185,12 +186,12 @@ def build_demo_yield_curve() -> list[dict]:
 def build_demo_macro_snapshot() -> dict:
     """Return demo macro data for UI development when FRED key not configured."""
     return {
-        "fed_funds_rate": {"value": 5.33,  "label": "Fed Funds Rate",         "unit": "%"},
-        "cpi":            {"value": 314.2, "label": "CPI (YoY)",              "unit": "Index"},
-        "gdp":            {"value": 27350, "label": "GDP",                     "unit": "$B"},
-        "unemployment":   {"value": 4.1,   "label": "Unemployment Rate",       "unit": "%"},
-        "yield_spread":   {"value": -0.32, "label": "10Y-2Y Spread",          "unit": "%"},
-        "breakeven_inf":  {"value": 2.31,  "label": "10Y Breakeven Inflation", "unit": "%"},
-        "dxy":            {"value": 104.7, "label": "US Dollar Index",         "unit": "Index"},
+        "fed_funds_rate": {"value": 5.33, "label": "Fed Funds Rate", "unit": "%"},
+        "cpi": {"value": 314.2, "label": "CPI (YoY)", "unit": "Index"},
+        "gdp": {"value": 27350, "label": "GDP", "unit": "$B"},
+        "unemployment": {"value": 4.1, "label": "Unemployment Rate", "unit": "%"},
+        "yield_spread": {"value": -0.32, "label": "10Y-2Y Spread", "unit": "%"},
+        "breakeven_inf": {"value": 2.31, "label": "10Y Breakeven Inflation", "unit": "%"},
+        "dxy": {"value": 104.7, "label": "US Dollar Index", "unit": "Index"},
         "as_of": datetime.now(UTC).isoformat(),
     }

@@ -3,6 +3,7 @@ RBAC — Role-based access control utilities.
 
 Roles: admin > trader > analyst > readonly
 """
+
 from __future__ import annotations
 
 from enum import StrEnum

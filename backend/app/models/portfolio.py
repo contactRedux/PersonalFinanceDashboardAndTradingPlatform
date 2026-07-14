@@ -1,6 +1,7 @@
 """
 ORM models for portfolio and positions.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -39,7 +40,7 @@ class Position(Base):
     )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False)
     asset_class: Mapped[str] = mapped_column(String(20), nullable=False)
-    side: Mapped[str] = mapped_column(String(10), nullable=False)   # long | short
+    side: Mapped[str] = mapped_column(String(10), nullable=False)  # long | short
     quantity: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     avg_entry_price: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     stop_loss: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), nullable=True)

@@ -2,6 +2,7 @@
 News aggregator — pulls from all configured sources, deduplicates,
 and queues articles for sentiment scoring.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -32,15 +33,10 @@ async def fetch_and_aggregate(
     """
     # Fetch from both sources concurrently
     import asyncio
-    benzinga_task = asyncio.create_task(
-        fetch_benzinga_news(symbols=symbols, from_hours=from_hours)
-    )
-    newsapi_task = asyncio.create_task(
-        fetch_financial_news(from_hours=from_hours)
-    )
-    benzinga_articles, newsapi_articles = await asyncio.gather(
-        benzinga_task, newsapi_task
-    )
+
+    benzinga_task = asyncio.create_task(fetch_benzinga_news(symbols=symbols, from_hours=from_hours))
+    newsapi_task = asyncio.create_task(fetch_financial_news(from_hours=from_hours))
+    benzinga_articles, newsapi_articles = await asyncio.gather(benzinga_task, newsapi_task)
 
     all_articles = benzinga_articles + newsapi_articles
 
@@ -57,9 +53,7 @@ async def fetch_and_aggregate(
     # Sort by publication time (newest first)
     def _parse_time(a: dict) -> datetime:
         try:
-            return datetime.fromisoformat(
-                a.get("published_at", "").replace("Z", "+00:00")
-            )
+            return datetime.fromisoformat(a.get("published_at", "").replace("Z", "+00:00"))
         except ValueError:
             return datetime.now(UTC)
 

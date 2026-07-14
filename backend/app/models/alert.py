@@ -1,6 +1,7 @@
 """
 ORM models for price and indicator alerts.
 """
+
 from __future__ import annotations
 
 import uuid

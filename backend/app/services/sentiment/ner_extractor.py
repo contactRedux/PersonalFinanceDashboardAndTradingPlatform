@@ -4,6 +4,7 @@ spaCy Named Entity Recognition — extract ticker symbols from news text.
 Uses a combination of spaCy NER and a regex-based fallback for common
 equity ticker patterns (1-5 uppercase letters).
 """
+
 from __future__ import annotations
 
 import re
@@ -14,14 +15,67 @@ logger = structlog.get_logger(__name__)
 
 _nlp = None
 # Common words that look like tickers but are not
-_TICKER_STOP_WORDS = frozenset({
-    "A", "I", "AND", "OR", "THE", "TO", "OF", "IN", "IS", "IT",
-    "BE", "AS", "AT", "SO", "WE", "BY", "AN", "DO", "IF", "ON",
-    "NO", "UP", "EX", "OK", "GO", "US", "UK", "EU", "FY", "Q1", "Q2",
-    "Q3", "Q4", "YOY", "QOQ", "IPO", "M&A", "EPS", "TTM", "LTM",
-    "CEO", "CFO", "COO", "CTO", "SEC", "NYSE", "NASDAQ", "ETF",
-    "AI", "ML", "GDP", "CPI", "PPI", "PMI", "Fed", "FED", "FOMC",
-})
+_TICKER_STOP_WORDS = frozenset(
+    {
+        "A",
+        "I",
+        "AND",
+        "OR",
+        "THE",
+        "TO",
+        "OF",
+        "IN",
+        "IS",
+        "IT",
+        "BE",
+        "AS",
+        "AT",
+        "SO",
+        "WE",
+        "BY",
+        "AN",
+        "DO",
+        "IF",
+        "ON",
+        "NO",
+        "UP",
+        "EX",
+        "OK",
+        "GO",
+        "US",
+        "UK",
+        "EU",
+        "FY",
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "YOY",
+        "QOQ",
+        "IPO",
+        "M&A",
+        "EPS",
+        "TTM",
+        "LTM",
+        "CEO",
+        "CFO",
+        "COO",
+        "CTO",
+        "SEC",
+        "NYSE",
+        "NASDAQ",
+        "ETF",
+        "AI",
+        "ML",
+        "GDP",
+        "CPI",
+        "PPI",
+        "PMI",
+        "Fed",
+        "FED",
+        "FOMC",
+    }
+)
 
 _TICKER_RE = re.compile(r"\b([A-Z]{1,5})\b")
 
@@ -31,6 +85,7 @@ def _get_nlp():
     if _nlp is None:
         try:
             import spacy
+
             _nlp = spacy.load("en_core_web_sm")
         except Exception:
             logger.warning("spacy.load_failed", hint="run: python -m spacy download en_core_web_sm")

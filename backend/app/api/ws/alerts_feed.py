@@ -4,6 +4,7 @@ WebSocket — Per-user alert notifications.
 Streams triggered alert events to the authenticated user.
 channel:alerts:{user_id}
 """
+
 from __future__ import annotations
 
 import json

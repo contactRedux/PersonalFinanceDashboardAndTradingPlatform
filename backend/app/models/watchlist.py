@@ -1,6 +1,7 @@
 """
 ORM model for user watchlists.
 """
+
 from __future__ import annotations
 
 import uuid

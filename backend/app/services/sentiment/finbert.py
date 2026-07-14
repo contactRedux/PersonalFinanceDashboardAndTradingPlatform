@@ -8,6 +8,7 @@ Model: ProsusAI/finbert (from HuggingFace)
 
 The model is loaded lazily on first call and cached for the worker lifetime.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -23,6 +24,7 @@ def _get_pipeline():
     if _pipeline is None:
         try:
             from transformers import pipeline as hf_pipeline
+
             logger.info("finbert.loading")
             _pipeline = hf_pipeline(
                 "text-classification",
@@ -61,8 +63,10 @@ def score_text(text: str) -> dict:
         else:
             raw_score = 0.0
         return {
-            "label": label, "confidence": confidence,
-            "raw_score": raw_score, "model": "finbert",
+            "label": label,
+            "confidence": confidence,
+            "raw_score": raw_score,
+            "model": "finbert",
         }
     except Exception:
         logger.exception("finbert.score_error")

@@ -12,6 +12,7 @@ Supported field categories:
                  atr_pct, volume_ratio (vs 20-day avg), change_pct_1d
   - Metadata:    sector, exchange, asset_class
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -23,14 +24,14 @@ logger = structlog.get_logger(__name__)
 
 # ─── Operator helpers ─────────────────────────────────────────────────────────
 _OPS = {
-    "lt":      lambda v, t: v < t,
-    "lte":     lambda v, t: v <= t,
-    "gt":      lambda v, t: v > t,
-    "gte":     lambda v, t: v >= t,
-    "eq":      lambda v, t: v == t,
-    "neq":     lambda v, t: v != t,
+    "lt": lambda v, t: v < t,
+    "lte": lambda v, t: v <= t,
+    "gt": lambda v, t: v > t,
+    "gte": lambda v, t: v >= t,
+    "eq": lambda v, t: v == t,
+    "neq": lambda v, t: v != t,
     "between": lambda v, t: isinstance(t, (list, tuple)) and len(t) == 2 and t[0] <= v <= t[1],
-    "in":      lambda v, t: isinstance(t, list) and v in t,
+    "in": lambda v, t: isinstance(t, list) and v in t,
     "contains": lambda v, t: isinstance(v, str) and isinstance(t, str) and t.lower() in v.lower(),
 }
 

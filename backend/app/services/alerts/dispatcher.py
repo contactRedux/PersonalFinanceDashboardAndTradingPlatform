@@ -5,6 +5,7 @@ Triggered alerts are sent to channel:alerts:{user_id} so the
 WebSocket feed (alerts_feed.py) can push them to the client in real time.
 Also persists triggered events to PostgreSQL via the audit_log table.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,6 +51,7 @@ async def dispatch_alert_event(event: AlertEvent) -> None:
 async def dispatch_many(events: list[AlertEvent]) -> None:
     """Dispatch all triggered events concurrently."""
     import asyncio
+
     if not events:
         return
     await asyncio.gather(*(dispatch_alert_event(e) for e in events))

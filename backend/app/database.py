@@ -1,6 +1,7 @@
 """
 SQLAlchemy async engine and session factory.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -27,4 +28,5 @@ AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
 
 class Base(DeclarativeBase):
     """Shared declarative base for all ORM models."""
+
     pass

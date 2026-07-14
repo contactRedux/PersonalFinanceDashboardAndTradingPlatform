@@ -3,6 +3,7 @@ Watchlist CRUD endpoints.
 Stores per-user watchlists in PostgreSQL. Persists the symbol list
 so it's available server-side for alert evaluation and screener defaults.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -102,9 +103,7 @@ async def update_watchlist(
     updates = body.model_dump(exclude_none=True)
     if updates:
         await db.execute(
-            update(Watchlist)
-            .where(Watchlist.id == uuid.UUID(watchlist_id))
-            .values(**updates)
+            update(Watchlist).where(Watchlist.id == uuid.UUID(watchlist_id)).values(**updates)
         )
         await db.commit()
         await db.refresh(watchlist)

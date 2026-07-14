@@ -10,6 +10,7 @@ Usage:
     provider = get_provider()
     bars = await provider.get_bars("AAPL", "1d")
 """
+
 from __future__ import annotations
 
 import structlog
@@ -40,9 +41,7 @@ def get_provider(name: str | None = None) -> MarketDataProvider:
     if preferred in _providers:
         provider = _providers[preferred]
         # Check if alpaca is actually configured
-        if preferred == "alpaca" and not (
-            settings.alpaca_api_key and settings.alpaca_api_secret
-        ):
+        if preferred == "alpaca" and not (settings.alpaca_api_key and settings.alpaca_api_secret):
             logger.warning(
                 "market_data.provider.fallback",
                 requested=preferred,
@@ -55,9 +54,7 @@ def get_provider(name: str | None = None) -> MarketDataProvider:
     # Unknown provider — use default priority order
     for p_name in _priority:
         p = _providers[p_name]
-        if p_name == "alpaca" and not (
-            settings.alpaca_api_key and settings.alpaca_api_secret
-        ):
+        if p_name == "alpaca" and not (settings.alpaca_api_key and settings.alpaca_api_secret):
             continue
         logger.info("market_data.provider.selected", provider=p_name)
         return p

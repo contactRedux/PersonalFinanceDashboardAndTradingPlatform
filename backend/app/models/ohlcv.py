@@ -2,6 +2,7 @@
 ORM models for OHLCV bars and tick data (TimescaleDB hypertables).
 The hypertable setup is done in a post-migration SQL script.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -18,6 +19,7 @@ class OHLCV(Base):
     TimescaleDB hypertable — one row per (symbol, timeframe, time) bar.
     Partitioned by time with 1-day chunks for minute data.
     """
+
     __tablename__ = "ohlcv"
     __table_args__ = (
         UniqueConstraint("time", "symbol", "timeframe", name="uq_ohlcv_time_symbol_timeframe"),
@@ -46,10 +48,9 @@ class Tick(Base):
     TimescaleDB hypertable — individual trade prints.
     Partitioned by time with 1-hour chunks.
     """
+
     __tablename__ = "ticks"
-    __table_args__ = (
-        Index("ix_ticks_symbol_time", "symbol", "time"),
-    )
+    __table_args__ = (Index("ix_ticks_symbol_time", "symbol", "time"),)
 
     time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), primary_key=True, nullable=False
@@ -57,6 +58,6 @@ class Tick(Base):
     symbol: Mapped[str] = mapped_column(String(20), primary_key=True, nullable=False)
     price: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     size: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
-    side: Mapped[str | None] = mapped_column(String(1), nullable=True)   # B / S / U
+    side: Mapped[str | None] = mapped_column(String(1), nullable=True)  # B / S / U
     exchange: Mapped[str | None] = mapped_column(String(30), nullable=True)
     provider: Mapped[str] = mapped_column(String(30), nullable=False)

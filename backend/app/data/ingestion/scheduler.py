@@ -8,6 +8,7 @@ Jobs:
 
 This runs as a background task launched from the FastAPI lifespan context.
 """
+
 from __future__ import annotations
 
 import structlog

@@ -4,6 +4,7 @@ WebSocket — Time & Sales tape feed.
 Streams real-time trade prints from channel:tape (all symbols)
 or channel:tape:{symbol} (per-symbol filtered).
 """
+
 from __future__ import annotations
 
 import asyncio

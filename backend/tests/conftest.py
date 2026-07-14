@@ -1,6 +1,7 @@
 """
 Backend test configuration and shared fixtures.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -17,7 +18,5 @@ def settings():
 @pytest.fixture
 async def client():
     """Async test client for FastAPI app (no real DB/Redis needed for unit tests)."""
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://testserver"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as ac:
         yield ac

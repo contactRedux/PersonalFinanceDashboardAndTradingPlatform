@@ -9,6 +9,7 @@ GET /crypto/liquidations     — exchange liquidation heatmap data
 GET /crypto/exchange-flows   — BTC/ETH exchange netflow
 GET /crypto/top-movers       — top 24h gainers and losers
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -29,7 +30,14 @@ COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 
 # Canonical crypto symbols we track
 DEFAULT_PERPS = [
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "AVAXUSDT",
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT",
+    "XRPUSDT",
+    "ADAUSDT",
+    "DOGEUSDT",
+    "AVAXUSDT",
 ]
 COINGECKO_IDS = {
     "BTC": "bitcoin",
@@ -93,10 +101,18 @@ async def get_liquidation_levels(
     """
     base = 47_250.0 if "BTC" in symbol.upper() else 2_450.0
     levels = [
-        {"price": base * (1 - i * 0.02), "liquidations_usd": round(1e6 * (i + 1) * 0.5, 0), "side": "long"}
+        {
+            "price": base * (1 - i * 0.02),
+            "liquidations_usd": round(1e6 * (i + 1) * 0.5, 0),
+            "side": "long",
+        }
         for i in range(1, 8)
     ] + [
-        {"price": base * (1 + i * 0.02), "liquidations_usd": round(1e6 * i * 0.4, 0), "side": "short"}
+        {
+            "price": base * (1 + i * 0.02),
+            "liquidations_usd": round(1e6 * i * 0.4, 0),
+            "side": "short",
+        }
         for i in range(1, 8)
     ]
     levels.sort(key=lambda x: x["price"])
@@ -226,6 +242,7 @@ async def _fetch_coingecko_top_movers(limit: int) -> list[dict]:
 def _demo_funding_rates(symbols: list[str]) -> list[dict]:
     # Demo only — not cryptographic use, seed for reproducibility
     import random  # noqa: S311
+
     random.seed(42)
     return [
         {
@@ -240,17 +257,70 @@ def _demo_funding_rates(symbols: list[str]) -> list[dict]:
 
 def _demo_onchain_metrics(symbol: str) -> dict:
     defaults = {
-        "BTC": {"market_cap": 930_000_000_000, "volume_24h": 28_400_000_000, "price": 47_250, "change_24h": 2.3, "circulating_supply": 19_600_000, "ath": 73_750, "ath_change_pct": -36.0},
-        "ETH": {"market_cap": 295_000_000_000, "volume_24h": 14_200_000_000, "price": 2_450,  "change_24h": 1.8, "circulating_supply": 120_400_000, "ath": 4_891, "ath_change_pct": -50.0},
+        "BTC": {
+            "market_cap": 930_000_000_000,
+            "volume_24h": 28_400_000_000,
+            "price": 47_250,
+            "change_24h": 2.3,
+            "circulating_supply": 19_600_000,
+            "ath": 73_750,
+            "ath_change_pct": -36.0,
+        },
+        "ETH": {
+            "market_cap": 295_000_000_000,
+            "volume_24h": 14_200_000_000,
+            "price": 2_450,
+            "change_24h": 1.8,
+            "circulating_supply": 120_400_000,
+            "ath": 4_891,
+            "ath_change_pct": -50.0,
+        },
     }
-    return defaults.get(symbol, {"market_cap": None, "volume_24h": None, "price": None, "change_24h": None})
+    return defaults.get(
+        symbol, {"market_cap": None, "volume_24h": None, "price": None, "change_24h": None}
+    )
 
 
 def _demo_top_movers() -> list[dict]:
     return [
-        {"symbol": "SOL",  "name": "Solana",   "price": 185.2,  "change_24h": 8.5,  "volume_24h": 4_200_000_000, "market_cap": 85_000_000_000},
-        {"symbol": "AVAX", "name": "Avalanche","price": 38.4,   "change_24h": 6.2,  "volume_24h": 650_000_000,   "market_cap": 15_600_000_000},
-        {"symbol": "BTC",  "name": "Bitcoin",  "price": 47_250, "change_24h": 2.3,  "volume_24h": 28_400_000_000,"market_cap": 930_000_000_000},
-        {"symbol": "DOGE", "name": "Dogecoin", "price": 0.132,  "change_24h": -4.8, "volume_24h": 980_000_000,   "market_cap": 19_200_000_000},
-        {"symbol": "XRP",  "name": "XRP",      "price": 0.625,  "change_24h": -3.2, "volume_24h": 1_800_000_000, "market_cap": 35_000_000_000},
+        {
+            "symbol": "SOL",
+            "name": "Solana",
+            "price": 185.2,
+            "change_24h": 8.5,
+            "volume_24h": 4_200_000_000,
+            "market_cap": 85_000_000_000,
+        },
+        {
+            "symbol": "AVAX",
+            "name": "Avalanche",
+            "price": 38.4,
+            "change_24h": 6.2,
+            "volume_24h": 650_000_000,
+            "market_cap": 15_600_000_000,
+        },
+        {
+            "symbol": "BTC",
+            "name": "Bitcoin",
+            "price": 47_250,
+            "change_24h": 2.3,
+            "volume_24h": 28_400_000_000,
+            "market_cap": 930_000_000_000,
+        },
+        {
+            "symbol": "DOGE",
+            "name": "Dogecoin",
+            "price": 0.132,
+            "change_24h": -4.8,
+            "volume_24h": 980_000_000,
+            "market_cap": 19_200_000_000,
+        },
+        {
+            "symbol": "XRP",
+            "name": "XRP",
+            "price": 0.625,
+            "change_24h": -3.2,
+            "volume_24h": 1_800_000_000,
+            "market_cap": 35_000_000_000,
+        },
     ]

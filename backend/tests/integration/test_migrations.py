@@ -9,6 +9,7 @@ with fallback types in SQLite, so some columns may differ from production schema
 For a full production migration test, run against TimescaleDB:
     DATABASE_SYNC_URL=postgresql://... pytest tests/integration/test_migrations.py
 """
+
 from __future__ import annotations
 
 import os
@@ -86,10 +87,7 @@ def test_downgrade_base_drops_all_tables(set_migration_env, sqlite_url):
 
     engine = sa.create_engine(sqlite_url)
     inspector = sa.inspect(engine)
-    remaining = [
-        t for t in inspector.get_table_names()
-        if t != "alembic_version"
-    ]
+    remaining = [t for t in inspector.get_table_names() if t != "alembic_version"]
     engine.dispose()
 
     assert not remaining, f"Tables still present after downgrade base: {remaining}"

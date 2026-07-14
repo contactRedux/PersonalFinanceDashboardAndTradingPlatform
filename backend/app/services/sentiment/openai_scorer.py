@@ -4,6 +4,7 @@ OpenAI GPT-4o sentiment scorer.
 Used only for high-impact articles (earnings calls, Fed statements, M&A).
 This gates GPT-4o usage to prevent runaway costs.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -37,6 +38,7 @@ async def score_text_gpt4o(text: str, headline: str = "") -> dict:
 
     try:
         import openai
+
         client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
 
         content = f"HEADLINE: {headline}\n\nARTICLE: {text[:3000]}"
@@ -52,6 +54,7 @@ async def score_text_gpt4o(text: str, headline: str = "") -> dict:
         )
 
         import json
+
         result = json.loads(response.choices[0].message.content or "{}")
         return {
             "label": result.get("sentiment", "neutral"),

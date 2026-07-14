@@ -1,6 +1,7 @@
 """
 ORM model for fundamental data (refreshed daily).
 """
+
 from __future__ import annotations
 
 from datetime import date

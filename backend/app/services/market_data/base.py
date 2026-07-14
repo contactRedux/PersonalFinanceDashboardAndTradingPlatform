@@ -9,6 +9,7 @@ Every provider must implement:
 
 All methods return data in the canonical schema defined in normalizer.py.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -42,9 +43,7 @@ class MarketDataProvider(ABC):
         """Return latest quotes for multiple symbols (batch)."""
 
     @abstractmethod
-    async def stream_quotes(
-        self, symbols: list[str]
-    ) -> AsyncGenerator[CanonicalQuote, None]:
+    async def stream_quotes(self, symbols: list[str]) -> AsyncGenerator[CanonicalQuote, None]:
         """
         Async generator — yields real-time quote updates for subscribed symbols.
         Should reconnect automatically on network errors.

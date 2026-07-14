@@ -3,6 +3,7 @@ WebSocket — Level 2 / Order Book feed for a specific symbol.
 
 Streams order book snapshots from channel:orderbook:{symbol}.
 """
+
 from __future__ import annotations
 
 import json

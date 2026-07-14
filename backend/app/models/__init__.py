@@ -1,6 +1,7 @@
 """
 Models package — import all ORM models here so Alembic autogenerate finds them.
 """
+
 from app.models.alert import Alert
 from app.models.audit_log import AuditLog
 from app.models.dashboard_layout import DashboardLayout

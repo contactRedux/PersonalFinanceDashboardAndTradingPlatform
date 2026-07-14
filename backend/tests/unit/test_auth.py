@@ -1,6 +1,7 @@
 """
 Unit tests for JWT auth utilities.
 """
+
 from __future__ import annotations
 
 from app.auth.jwt import create_access_token, decode_access_token
@@ -55,6 +56,7 @@ def test_generate_totp_secret_is_valid_base32():
 
 def test_verify_totp_with_current_code():
     import pyotp
+
     secret = generate_totp_secret()
     totp = pyotp.TOTP(secret)
     current_code = totp.now()

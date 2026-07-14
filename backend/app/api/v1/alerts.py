@@ -9,6 +9,7 @@ POST   /alerts/{id}/acknowledge — mark triggered alert as acknowledged
 
 Alerts are stored in PostgreSQL. Evaluator runs via APScheduler.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -118,8 +119,5 @@ async def acknowledge_alert(alert_id: str, current_user: CurrentUser):
 async def get_alert_types(_: CurrentUser):
     """Return all supported alert types."""
     return {
-        "types": [
-            {"value": t.value, "label": t.value.replace("_", " ").title()}
-            for t in AlertType
-        ]
+        "types": [{"value": t.value, "label": t.value.replace("_", " ").title()} for t in AlertType]
     }

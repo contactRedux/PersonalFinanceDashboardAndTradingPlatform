@@ -33,10 +33,25 @@ export interface LayoutItem {
 }
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
-  { i: "chart",     x: 2, y: 0, w: 7, h: 18, minW: 4, minH: 8 },
-  { i: "watchlist", x: 0, y: 0, w: 2, h: 18, minW: 2, minH: 6 },
-  { i: "portfolio", x: 9, y: 0, w: 3, h: 9,  minW: 2, minH: 4 },
-  { i: "news",      x: 9, y: 9, w: 3, h: 9,  minW: 2, minH: 4 },
+  { i: "chart",       x: 2,  y: 0,  w: 7, h: 18, minW: 4, minH: 8 },
+  { i: "watchlist",   x: 0,  y: 0,  w: 2, h: 18, minW: 2, minH: 6 },
+  { i: "portfolio",   x: 9,  y: 0,  w: 3, h: 9,  minW: 2, minH: 4 },
+  { i: "news",        x: 9,  y: 9,  w: 3, h: 9,  minW: 2, minH: 4 },
+  { i: "risk",        x: 0,  y: 18, w: 4, h: 10, minW: 2, minH: 4 },
+  { i: "orderbook",   x: 4,  y: 18, w: 4, h: 10, minW: 2, minH: 6 },
+  { i: "tape",        x: 8,  y: 18, w: 4, h: 10, minW: 2, minH: 6 },
+  { i: "options",     x: 0,  y: 28, w: 6, h: 12, minW: 4, minH: 6 },
+  { i: "screener",    x: 6,  y: 28, w: 6, h: 12, minW: 4, minH: 6 },
+  { i: "alerts",      x: 0,  y: 40, w: 4, h: 10, minW: 2, minH: 4 },
+  { i: "macro",       x: 4,  y: 40, w: 4, h: 10, minW: 2, minH: 6 },
+  { i: "calendar",    x: 8,  y: 40, w: 4, h: 10, minW: 2, minH: 6 },
+  { i: "heatmap",     x: 0,  y: 50, w: 6, h: 12, minW: 4, minH: 6 },
+  { i: "correlation", x: 6,  y: 50, w: 6, h: 12, minW: 4, minH: 6 },
+  { i: "darkpool",    x: 0,  y: 62, w: 6, h: 10, minW: 4, minH: 6 },
+  { i: "crypto",      x: 6,  y: 62, w: 6, h: 10, minW: 4, minH: 6 },
+  { i: "performance", x: 0,  y: 72, w: 6, h: 14, minW: 4, minH: 8 },
+  { i: "mtf",         x: 6,  y: 72, w: 6, h: 14, minW: 4, minH: 8 },
+  { i: "order-entry", x: 0,  y: 86, w: 4, h: 14, minW: 3, minH: 8 },
 ];
 
 interface LayoutState {

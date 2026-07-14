@@ -8,6 +8,7 @@ Algorithm:
   - Determine dominant label from weighted vote
   - Cache result in Redis (5 min TTL) + persist to MongoDB
 """
+
 from __future__ import annotations
 
 import math

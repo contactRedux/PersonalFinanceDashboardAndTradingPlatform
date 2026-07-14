@@ -2,6 +2,7 @@
 FastAPI dependency injection providers.
 All shared resources (DB session, Redis, auth) are requested via Depends().
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -62,6 +63,7 @@ CurrentUser = Annotated[dict, Depends(get_current_user)]
 # ─── RBAC: role enforcement ────────────────────────────────────────────────────
 def require_role(*roles: str):
     """Dependency factory — raises 403 if the current user's role is not in roles."""
+
     async def _check(current_user: CurrentUser) -> dict:
         if current_user.get("role") not in roles:
             raise HTTPException(
@@ -69,4 +71,5 @@ def require_role(*roles: str):
                 detail="Insufficient permissions.",
             )
         return current_user
+
     return _check

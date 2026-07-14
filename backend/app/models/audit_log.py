@@ -2,6 +2,7 @@
 ORM model for the audit log.
 All auth events, trade mutations, and config changes are recorded here.
 """
+
 from __future__ import annotations
 
 import uuid

@@ -1,6 +1,6 @@
 # ruff: noqa: E501
 
-"""  # ruff: noqa: UP042
+"""# ruff: noqa: UP042
 Alert evaluator — compares current market data against alert conditions.
 
 Alert types:
@@ -13,6 +13,7 @@ Alert types:
 
 Alert lifecycle: pending → triggered → acknowledged
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -65,9 +66,7 @@ class AlertEvent:
     message: str
 
 
-def evaluate_price_alert(
-    condition: AlertCondition, quote: dict[str, Any]
-) -> AlertEvent | None:
+def evaluate_price_alert(condition: AlertCondition, quote: dict[str, Any]) -> AlertEvent | None:
     """
     Evaluate a price-based alert against a live quote dict.
     Quote dict must have: price, change_pct, volume keys.
@@ -123,13 +122,13 @@ def _build_message(
     symbol_str: str,
 ) -> str:
     type_labels = {
-        AlertType.PRICE_ABOVE:   f"{symbol_str} crossed above ${condition.threshold:.2f} (now ${actual_value:.2f})",
-        AlertType.PRICE_BELOW:   f"{symbol_str} crossed below ${condition.threshold:.2f} (now ${actual_value:.2f})",
+        AlertType.PRICE_ABOVE: f"{symbol_str} crossed above ${condition.threshold:.2f} (now ${actual_value:.2f})",
+        AlertType.PRICE_BELOW: f"{symbol_str} crossed below ${condition.threshold:.2f} (now ${actual_value:.2f})",
         AlertType.CHANGE_PCT_GT: f"{symbol_str} daily change {actual_value:+.2f}% exceeds +{condition.threshold:.2f}%",
         AlertType.CHANGE_PCT_LT: f"{symbol_str} daily change {actual_value:+.2f}% below {condition.threshold:.2f}%",
-        AlertType.VOLUME_SPIKE:  f"{symbol_str} volume ratio {actual_value:.1f}x exceeds {condition.threshold:.1f}x",
-        AlertType.PNL_BELOW:     f"Portfolio P&L ${actual_value:.2f} below threshold ${condition.threshold:.2f}",
-        AlertType.NEWS_KEYWORD:  f"News keyword alert for {symbol_str}",
+        AlertType.VOLUME_SPIKE: f"{symbol_str} volume ratio {actual_value:.1f}x exceeds {condition.threshold:.1f}x",
+        AlertType.PNL_BELOW: f"Portfolio P&L ${actual_value:.2f} below threshold ${condition.threshold:.2f}",
+        AlertType.NEWS_KEYWORD: f"News keyword alert for {symbol_str}",
     }
     return type_labels.get(condition.alert_type, condition.label)
 

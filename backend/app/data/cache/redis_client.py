@@ -2,6 +2,7 @@
 Redis connection pool — shared singleton, initialized on app startup.
 Uses redis-py async client with hiredis parser.
 """
+
 from __future__ import annotations
 
 import redis.asyncio as aioredis

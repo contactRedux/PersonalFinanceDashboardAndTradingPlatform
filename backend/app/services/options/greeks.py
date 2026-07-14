@@ -4,6 +4,7 @@ Black-Scholes Greeks implementation.
 Computes all five Greeks (Delta, Gamma, Theta, Vega, Rho) plus
 Implied Volatility (IV) for options pricing analysis.
 """
+
 from __future__ import annotations
 
 import math
@@ -32,11 +33,11 @@ def _norm_pdf(x: float) -> float:
 
 
 def black_scholes_greeks(  # noqa: N802
-    S: float,        # noqa: N803  # Current stock price
-    K: float,        # noqa: N803  # Strike price
-    T: float,        # noqa: N803  # Time to expiration in years
-    r: float,        # Risk-free interest rate (annualized)
-    sigma: float,    # Implied volatility (annualized)
+    S: float,  # noqa: N803  # Current stock price
+    K: float,  # noqa: N803  # Strike price
+    T: float,  # noqa: N803  # Time to expiration in years
+    r: float,  # Risk-free interest rate (annualized)
+    sigma: float,  # Implied volatility (annualized)
     option_type: str = "call",  # "call" or "put"
 ) -> Greeks:
     """
@@ -80,9 +81,9 @@ def black_scholes_greeks(  # noqa: N802
 
 def implied_volatility(  # noqa: N802
     market_price: float,
-    S: float,        # noqa: N803
-    K: float,        # noqa: N803
-    T: float,        # noqa: N803
+    S: float,  # noqa: N803
+    K: float,  # noqa: N803
+    T: float,  # noqa: N803
     r: float,
     option_type: str = "call",
     tolerance: float = 1e-5,

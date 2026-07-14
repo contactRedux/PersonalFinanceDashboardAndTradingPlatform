@@ -1,6 +1,7 @@
 """
 ORM model for saved dashboard layout configurations.
 """
+
 from __future__ import annotations
 
 import uuid

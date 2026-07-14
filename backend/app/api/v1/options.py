@@ -3,6 +3,7 @@ Options chain endpoints.
 Fetches options chain from Polygon.io (primary) or Tradier (fallback).
 Computes Black-Scholes Greeks server-side.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -76,6 +77,7 @@ async def get_unusual_activity(
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
 
+
 async def _fetch_chain(symbol: str, expiry: str | None) -> dict:
     """Fetch options chain from Polygon.io or return placeholder."""
     if not settings.polygon_api_key:
@@ -142,13 +144,15 @@ async def _fetch_chain(symbol: str, expiry: str | None) -> dict:
                         "theoretical_price": g.theoretical_price,
                     }
 
-                contracts.append({
-                    "ticker": contract.get("ticker"),
-                    "strike": contract.get("strike_price"),
-                    "expiry": exp_date,
-                    "contract_type": contract.get("contract_type"),
-                    "greeks": greeks_data,
-                })
+                contracts.append(
+                    {
+                        "ticker": contract.get("ticker"),
+                        "strike": contract.get("strike_price"),
+                        "expiry": exp_date,
+                        "contract_type": contract.get("contract_type"),
+                        "greeks": greeks_data,
+                    }
+                )
 
             return {
                 "underlying_price": underlying_price,
@@ -175,11 +179,9 @@ async def _fetch_expirations(symbol: str) -> list[str]:
                 },
             )
             data = resp.json()
-            expirations = sorted({
-                c["expiration_date"]
-                for c in data.get("results", [])
-                if c.get("expiration_date")
-            })
+            expirations = sorted(
+                {c["expiration_date"] for c in data.get("results", []) if c.get("expiration_date")}
+            )
             return expirations
     except Exception:
         return []

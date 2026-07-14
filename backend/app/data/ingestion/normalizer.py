@@ -4,6 +4,7 @@ Canonical market data schemas.
 All market data providers normalize their output to these dataclasses
 before anything is written to TimescaleDB or published to Redis.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,11 +14,12 @@ from datetime import datetime
 @dataclass
 class CanonicalBar:
     """Normalized OHLCV bar — all providers produce this shape."""
+
     time: datetime
     symbol: str
     exchange: str
-    asset_class: str          # equity | crypto | forex | futures | options
-    timeframe: str            # 1m | 5m | 15m | 1h | 4h | 1d | 1w
+    asset_class: str  # equity | crypto | forex | futures | options
+    timeframe: str  # 1m | 5m | 15m | 1h | 4h | 1d | 1w
     open: float
     high: float
     low: float
@@ -31,6 +33,7 @@ class CanonicalBar:
 @dataclass
 class CanonicalQuote:
     """Normalized real-time quote."""
+
     symbol: str
     price: float
     bid: float | None = None

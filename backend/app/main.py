@@ -3,6 +3,7 @@ QuantNexus — FastAPI application factory.
 
 Entrypoint: uvicorn app.main:app
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -107,7 +108,7 @@ def create_app() -> FastAPI:
     Instrumentator(
         should_group_status_codes=True,
         should_ignore_untemplated=True,
-        should_respect_env_var=True,          # honour ENABLE_METRICS env var
+        should_respect_env_var=True,  # honour ENABLE_METRICS env var
         excluded_handlers=["/health"],
     ).instrument(_app).expose(_app, endpoint="/metrics", include_in_schema=False)
 

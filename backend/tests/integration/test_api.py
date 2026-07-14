@@ -4,6 +4,7 @@ Integration tests for health and auth REST endpoints.
 These tests require a running application context (Redis connection).
 They are skipped automatically when Redis is not available.
 """
+
 from __future__ import annotations
 
 import pytest

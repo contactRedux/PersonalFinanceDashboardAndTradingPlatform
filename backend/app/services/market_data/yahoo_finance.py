@@ -10,6 +10,7 @@ Limitations:
   - No WebSocket streaming — stream_quotes() yields from polling.
   - Rate limit: ~2000 requests/hour (unofficial API).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,9 +28,13 @@ logger = structlog.get_logger(__name__)
 
 # yfinance interval mapping
 _TF_MAP = {
-    "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h",
+    "1m": "1m",
+    "5m": "5m",
+    "15m": "15m",
+    "1h": "1h",
     "4h": "1h",  # yfinance has no 4h — we resample from 1h downstream
-    "1d": "1d", "1w": "1wk",
+    "1d": "1d",
+    "1w": "1wk",
 }
 
 
@@ -125,9 +130,7 @@ class YFinanceProvider(MarketDataProvider):
             await asyncio.sleep(0.1)  # light rate limit
         return results
 
-    async def stream_quotes(
-        self, symbols: list[str]
-    ) -> AsyncGenerator[CanonicalQuote, None]:
+    async def stream_quotes(self, symbols: list[str]) -> AsyncGenerator[CanonicalQuote, None]:
         """Poll yfinance every 30 seconds — best-effort real-time simulation."""
         while True:
             for sym in symbols:

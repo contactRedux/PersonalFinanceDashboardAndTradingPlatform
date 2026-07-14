@@ -5,6 +5,7 @@ POST /screener/run   — evaluate filter conditions against universe
 GET  /screener/presets — return saved preset conditions
 POST /screener/presets — save a named preset
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -131,20 +132,22 @@ async def get_sector_map(_: CurrentUser):
     for sector_name, symbols in SECTOR_MAP.items():
         rows = [r for r in DEMO_UNIVERSE if r["symbol"] in symbols]
         avg_change = sum(r["change_pct_1d"] for r in rows) / len(rows) if rows else 0
-        sector_data.append({
-            "sector": sector_name,
-            "symbols": symbols,
-            "avg_change_pct": round(avg_change, 2),
-            "stocks": [
-                {
-                    "symbol": r["symbol"],
-                    "name": r["name"],
-                    "change_pct_1d": r["change_pct_1d"],
-                    "market_cap": r["market_cap"],
-                }
-                for r in rows
-            ],
-        })
+        sector_data.append(
+            {
+                "sector": sector_name,
+                "symbols": symbols,
+                "avg_change_pct": round(avg_change, 2),
+                "stocks": [
+                    {
+                        "symbol": r["symbol"],
+                        "name": r["name"],
+                        "change_pct_1d": r["change_pct_1d"],
+                        "market_cap": r["market_cap"],
+                    }
+                    for r in rows
+                ],
+            }
+        )
     return {"sectors": sector_data}
 
 
@@ -158,6 +161,7 @@ async def get_correlations(
     Uses synthetic historical returns for demo; real data uses TimescaleDB.
     """
     import random  # noqa: S311
+
     requested = [s.strip().upper() for s in symbols.split(",")[:12]]
     random.seed(42)
 

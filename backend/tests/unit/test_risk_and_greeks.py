@@ -10,6 +10,7 @@ Covers:
   - black_scholes_greeks (call/put)
   - implied_volatility Newton-Raphson
 """
+
 from __future__ import annotations
 
 import math
@@ -89,9 +90,7 @@ class TestCVar:
 
 # ─── sharpe_ratio ──────────────────────────────────────────────────────────────
 class TestSharpeRatio:
-    def test_steady_positive_returns_positive_sharpe(
-        self, steady_returns: list[float]
-    ) -> None:
+    def test_steady_positive_returns_positive_sharpe(self, steady_returns: list[float]) -> None:
         # steady_returns: mean=0.001/day, stdev > 0, annualized return > risk-free
         sharpe = sharpe_ratio(steady_returns, risk_free_rate=0.03)
         assert sharpe > 0
@@ -99,9 +98,7 @@ class TestSharpeRatio:
     def test_zero_with_single_return(self) -> None:
         assert sharpe_ratio([0.001]) == 0.0
 
-    def test_negative_returns_negative_sharpe(
-        self, mixed_negative_returns: list[float]
-    ) -> None:
+    def test_negative_returns_negative_sharpe(self, mixed_negative_returns: list[float]) -> None:
         # mixed_negative: mean = -0.01/day → annualized far below risk-free
         assert sharpe_ratio(mixed_negative_returns) < 0
 
@@ -258,7 +255,11 @@ class TestImpliedVolatility:
         g = black_scholes_greeks(S=100, K=100, T=0.25, r=0.05, sigma=0.3, option_type="call")
         recovered_iv = implied_volatility(
             market_price=g.theoretical_price,
-            S=100, K=100, T=0.25, r=0.05, option_type="call",
+            S=100,
+            K=100,
+            T=0.25,
+            r=0.05,
+            option_type="call",
         )
         assert recovered_iv is not None
         assert abs(recovered_iv - 0.3) < 0.001

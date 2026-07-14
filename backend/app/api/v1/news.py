@@ -3,6 +3,7 @@ News and sentiment REST endpoints.
 Articles are served from MongoDB (async Motor driver).
 Sentiment scores are served from Redis cache.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -101,6 +102,7 @@ async def get_batch_sentiment(
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
 
+
 async def _fetch_articles_from_mongodb(
     symbols: list[str] | None,
     limit: int,
@@ -121,8 +123,7 @@ async def _fetch_articles_from_mongodb(
             query["tickers_mentioned"] = {"$in": [s.upper() for s in symbols]}
 
         cursor = (
-            db.news_articles
-            .find(query, {"_id": 0, "_fingerprint": 0})
+            db.news_articles.find(query, {"_id": 0, "_fingerprint": 0})
             .sort("published_at", -1)
             .skip(offset)
             .limit(limit)

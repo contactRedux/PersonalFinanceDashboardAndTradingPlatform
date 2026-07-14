@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import React from "react";
+import React, { act } from "react";
 import { render, screen } from "@testing-library/react";
 
 // ─── Mock fetch globally ─────────────────────────────────────────────────────
@@ -251,7 +251,10 @@ describe("PortfolioPanel smoke render", () => {
     const { PortfolioPanel } = await import(
       "@/components/panels/PortfolioPanel"
     );
-    const { unmount } = render(<PortfolioPanel panelId="test-portfolio" />);
+    let unmount!: () => void;
+    await act(async () => {
+      ({ unmount } = render(<PortfolioPanel panelId="test-portfolio" />));
+    });
     expect(document.body).toBeTruthy();
     unmount();
   });
@@ -260,7 +263,10 @@ describe("PortfolioPanel smoke render", () => {
 describe("RiskPanel smoke render", () => {
   it("renders without crash", async () => {
     const { RiskPanel } = await import("@/components/panels/RiskPanel");
-    const { unmount } = render(<RiskPanel panelId="test-risk" />);
+    let unmount!: () => void;
+    await act(async () => {
+      ({ unmount } = render(<RiskPanel panelId="test-risk" />));
+    });
     expect(document.body).toBeTruthy();
     unmount();
   });
@@ -271,7 +277,9 @@ describe("OrderBookPanel smoke render", () => {
     const { OrderBookPanel } = await import(
       "@/components/panels/OrderBookPanel"
     );
-    render(<OrderBookPanel panelId="test-ob" defaultSymbol="AAPL" />);
+    await act(async () => {
+      render(<OrderBookPanel panelId="test-ob" defaultSymbol="AAPL" />);
+    });
     expect(screen.getByText(/LEVEL 2/i)).toBeTruthy();
   });
 });
@@ -281,7 +289,9 @@ describe("TimeAndSalesPanel smoke render", () => {
     const { TimeAndSalesPanel } = await import(
       "@/components/panels/TimeAndSalesPanel"
     );
-    render(<TimeAndSalesPanel panelId="test-tape" defaultSymbol="AAPL" />);
+    await act(async () => {
+      render(<TimeAndSalesPanel panelId="test-tape" defaultSymbol="AAPL" />);
+    });
     expect(screen.getByText(/TIME & SALES/i)).toBeTruthy();
   });
 });
@@ -291,7 +301,9 @@ describe("OptionsChainPanel smoke render", () => {
     const { OptionsChainPanel } = await import(
       "@/components/panels/OptionsChainPanel"
     );
-    render(<OptionsChainPanel panelId="test-options" defaultSymbol="AAPL" />);
+    await act(async () => {
+      render(<OptionsChainPanel panelId="test-options" defaultSymbol="AAPL" />);
+    });
     // "OPTIONS CHAIN" appears in both the panel header and the column header
     const matches = screen.getAllByText(/OPTIONS CHAIN/i);
     expect(matches.length).toBeGreaterThan(0);

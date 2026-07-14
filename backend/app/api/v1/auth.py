@@ -7,6 +7,7 @@ Auth REST endpoints:
   POST /api/v1/auth/totp/setup  — generate TOTP QR
   POST /api/v1/auth/totp/verify — activate TOTP (persist to DB)
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -164,9 +165,8 @@ async def logout(request: Request, current_user: CurrentUser, db: DBSession):
     """Invalidate all refresh tokens for the current user."""
     await revoke_all_user_tokens(current_user["sub"])
 
-    client_ip = (
-        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or (request.client.host if request.client else None)
+    client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
+        request.client.host if request.client else None
     )
     await write_audit_log(
         db,
@@ -226,13 +226,10 @@ async def totp_verify(
             detail="Invalid TOTP code. Check your authenticator app time sync.",
         )
     await db.execute(
-        update(User)
-        .where(User.id == current_user["sub"])
-        .values(totp_secret=body.secret)
+        update(User).where(User.id == current_user["sub"]).values(totp_secret=body.secret)
     )
-    client_ip = (
-        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or (request.client.host if request.client else None)
+    client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
+        request.client.host if request.client else None
     )
     await write_audit_log(
         db,

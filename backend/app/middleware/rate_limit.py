@@ -10,6 +10,7 @@ Strategy:
 
 Returns HTTP 429 with Retry-After header when limit is exceeded.
 """
+
 from __future__ import annotations
 
 import time
@@ -22,12 +23,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 logger = structlog.get_logger(__name__)
 
 # ─── Rate limit tiers (requests per window_seconds) ──────────────────────────
-_AUTH_LIMIT   = 10   # tight limit for auth endpoints
-_API_LIMIT    = 120  # general API limit
-_WINDOW_SEC   = 60   # sliding window size
+_AUTH_LIMIT = 10  # tight limit for auth endpoints
+_API_LIMIT = 120  # general API limit
+_WINDOW_SEC = 60  # sliding window size
 
 _EXEMPT_PATHS = {"/health", "/api/docs", "/api/redoc", "/api/openapi.json"}
-_AUTH_PREFIX  = "/api/v1/auth"
+_AUTH_PREFIX = "/api/v1/auth"
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -49,7 +50,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Determine tier
         is_auth = path.startswith(_AUTH_PREFIX)
         limit = _AUTH_LIMIT if is_auth else _API_LIMIT
-        tier  = "auth" if is_auth else "api"
+        tier = "auth" if is_auth else "api"
 
         # Extract client IP (honour X-Forwarded-For from NGINX)
         client_ip = (
@@ -59,11 +60,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
         # Build Redis key for current window bucket
-        bucket   = int(time.time()) // _WINDOW_SEC
+        bucket = int(time.time()) // _WINDOW_SEC
         redis_key = f"rl:{client_ip}:{tier}:{bucket}"
 
         try:
             from app.data.cache.redis_client import get_redis_pool  # noqa: PLC0415
+
             redis = await get_redis_pool()
             count: int = await redis.incr(redis_key)
             if count == 1:

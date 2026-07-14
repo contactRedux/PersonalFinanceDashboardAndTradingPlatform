@@ -1,4 +1,5 @@
 """Periodic OHLCV data refresh tasks — full implementation in ST-5."""
+
 from app.tasks.celery_app import celery_app
 
 

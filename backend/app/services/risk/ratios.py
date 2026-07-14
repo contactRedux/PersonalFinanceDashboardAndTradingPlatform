@@ -10,6 +10,7 @@ Implements:
   - Beta / Alpha vs benchmark
   - Max Drawdown
 """
+
 from __future__ import annotations
 
 import math
@@ -120,8 +121,7 @@ def beta_alpha(
     br = benchmark_returns[:n]
 
     cov_pr_br = sum(
-        (pr[i] - statistics.mean(pr)) * (br[i] - statistics.mean(br))
-        for i in range(n)
+        (pr[i] - statistics.mean(pr)) * (br[i] - statistics.mean(br)) for i in range(n)
     ) / (n - 1)
     var_br = statistics.variance(br)
 
