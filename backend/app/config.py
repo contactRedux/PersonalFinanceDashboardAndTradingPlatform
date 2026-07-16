@@ -83,6 +83,25 @@ class Settings(BaseSettings):
     # ─── Macro ────────────────────────────────────────────────────────────────
     fred_api_key: str = ""
 
+    # ─── Fundamentals ─────────────────────────────────────────────────────────
+    fmp_api_key: str = ""
+    factset_api_key: str = ""   # format: "username:apikey" (FactSet developer free tier)
+    openfigi_api_key: str = ""  # optional; raises rate limit from 10 to 25 req/min
+
+
+
+    # ─── Social / Community ───────────────────────────────────────────────────
+    stocktwits_access_token: str = ""
+
+    # ─── Earnings Transcripts ─────────────────────────────────────────────────
+    earningscall_api_key: str = ""
+
+    # ─── Reuters / Refinitiv (license-gated) ──────────────────────────────────────
+    refinitiv_app_key: str = ""  # requires paid LSEG/Refinitiv RDP license + SDK
+
+    # ─── Admin ────────────────────────────────────────────────────────────────────
+    admin_emails: list[str] = []  # comma-separated via env: ADMIN_EMAILS=a@b.com,c@d.com
+
     @field_validator("jwt_secret_key")
     @classmethod
     def jwt_secret_must_not_be_empty(cls, v: str) -> str:

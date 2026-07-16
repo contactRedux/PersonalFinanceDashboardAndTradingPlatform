@@ -19,12 +19,15 @@ from sqlalchemy import select
 
 from app.dependencies import CurrentUser, DBSession
 from app.models.order import Order
+from app.services.kill_switch import KillSwitch
 from app.services.orders.service import (
     OrderRequest,
     cancel_order,
     modify_order,
     place_order,
 )
+
+_kill_switch = KillSwitch()
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -107,7 +110,15 @@ async def place_order_endpoint(
 
     Persists the order to the local database and submits to Alpaca.
     Falls back to simulated fill if Alpaca keys are not configured.
+
+    Rejects with 503 when the platform kill-switch is active.
     """
+    if await _kill_switch.is_active():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Order submissions are currently halted by the platform kill-switch.",
+        )
+
     req = OrderRequest(
         user_id=current_user["sub"],
         symbol=body.symbol,

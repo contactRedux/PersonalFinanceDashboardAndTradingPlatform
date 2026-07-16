@@ -65,8 +65,15 @@ def train_lstm(
     except ImportError as exc:
         raise ImportError("PyTorch is required for LSTM training") from exc
 
+    import sys  # noqa: PLC0415
+    _repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if _repo_root not in sys.path:
+        sys.path.insert(0, _repo_root)
+
+    from ml.experiments.tracker import ExperimentTracker  # noqa: PLC0415
     from ml.models.lstm.dataset import OHLCVDataset  # noqa: PLC0415
     from ml.models.lstm.model import LSTMPricePredictor  # noqa: PLC0415
+    from ml.training.registry import ModelRegistry  # noqa: PLC0415
 
     df = _fetch_ohlcv(ticker, start, end)
     dataset = OHLCVDataset(df, seq_len=seq_len)
@@ -94,36 +101,82 @@ def train_lstm(
     criterion = nn.CrossEntropyLoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
-    for epoch in range(epochs):
-        model.train()
-        train_loss = 0.0
-        for x_batch, y_batch in train_loader:
-            x_batch = x_batch.to(device)
-            y_batch = torch.tensor(y_batch, dtype=torch.long).to(device)
-            optimizer.zero_grad()
-            logits = model(x_batch)
-            loss = criterion(logits, y_batch)
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
-            train_loss += loss.item()
-        scheduler.step()
+    tracker = ExperimentTracker(f"LSTM-{ticker.upper()}")
+    best_val_loss = float("inf")
 
-    # Save weights
-    _WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
-    weight_path = _WEIGHTS_DIR / f"{ticker.upper()}.pt"
-    torch.save(
-        {
-            "state_dict": model.state_dict(),
-            "n_features": dataset.n_features,
-            "hidden_size": hidden_size,
-            "seq_len": seq_len,
-            "ticker": ticker.upper(),
-            "mean": dataset.X.mean(axis=0).tolist(),
-            "std": (dataset.X.std(axis=0) + 1e-8).tolist(),
-        },
-        weight_path,
-    )
+    with tracker.start_run(
+        run_name=f"lstm-{ticker.lower()}-e{epochs}",
+        tags={"model": "lstm", "ticker": ticker.upper()},
+    ) as run_id:
+        tracker.log_params(
+            {
+                "ticker": ticker.upper(),
+                "start": start,
+                "end": end,
+                "epochs": epochs,
+                "hidden_size": hidden_size,
+                "seq_len": seq_len,
+                "batch_size": batch_size,
+                "lr": lr,
+            }
+        )
+
+        for epoch in range(epochs):
+            model.train()
+            train_loss = 0.0
+            for x_batch, y_batch in train_loader:
+                x_batch = x_batch.to(device)
+                y_batch = torch.tensor(y_batch, dtype=torch.long).to(device)
+                optimizer.zero_grad()
+                logits = model(x_batch)
+                loss = criterion(logits, y_batch)
+                loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                train_loss += loss.item()
+
+            # Validation loss
+            model.eval()
+            val_loss = 0.0
+            with torch.no_grad():
+                for x_batch, y_batch in val_loader:
+                    x_batch = x_batch.to(device)
+                    y_batch = torch.tensor(y_batch, dtype=torch.long).to(device)
+                    val_loss += criterion(model(x_batch), y_batch).item()
+
+            train_loss /= max(len(train_loader), 1)
+            val_loss /= max(len(val_loader), 1)
+            tracker.log_metrics({"train_loss": train_loss, "val_loss": val_loss}, step=epoch)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+            scheduler.step()
+
+        # Save weights
+        _WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+        weight_path = _WEIGHTS_DIR / f"{ticker.upper()}.pt"
+        torch.save(
+            {
+                "state_dict": model.state_dict(),
+                "n_features": dataset.n_features,
+                "hidden_size": hidden_size,
+                "seq_len": seq_len,
+                "ticker": ticker.upper(),
+                "mean": dataset.X.mean(axis=0).tolist(),
+                "std": (dataset.X.std(axis=0) + 1e-8).tolist(),
+            },
+            weight_path,
+        )
+        tracker.log_artifact(str(weight_path))
+
+        # Register in the model registry
+        reg = ModelRegistry("lstm")
+        reg.save(
+            ticker=ticker,
+            weight_path=weight_path,
+            metrics={"val_loss": best_val_loss},
+            metadata={"train_start": start, "train_end": end, "epochs": epochs},
+            mlflow_run_id=run_id,
+        )
 
     # Upload to S3 if configured
     s3_bucket = os.environ.get("AWS_S3_BUCKET")

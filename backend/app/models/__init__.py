@@ -6,7 +6,7 @@ from app.models.alert import Alert
 from app.models.audit_log import AuditLog
 from app.models.dashboard_layout import DashboardLayout
 from app.models.economic_event import EconomicEvent
-from app.models.fundamental import Fundamental
+from app.models.fundamental import Fundamental, InsiderTransaction, InstitutionalHolder
 from app.models.ohlcv import OHLCV, Tick
 from app.models.order import Order
 from app.models.portfolio import Portfolio, Position
@@ -23,6 +23,8 @@ __all__ = [
     "OHLCV",
     "Tick",
     "Fundamental",
+    "InsiderTransaction",
+    "InstitutionalHolder",
     "Order",
     "Portfolio",
     "Position",

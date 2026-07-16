@@ -256,12 +256,22 @@ async def search_symbols(
     _: CurrentUser,
     q: str = Query(..., min_length=1, max_length=50),
     asset_class: str | None = Query(None, description="equity|crypto|forex|futures|options"),
+    enrich_figi: bool = Query(False, description="Enrich results with FIGI/ISIN/CUSIP identifiers"),
 ):
-    """Search for symbols by name or ticker."""
+    """Search for symbols by name or ticker, optionally enriched with OpenFIGI identifiers."""
     provider = get_provider()
     results = await provider.search_symbols(q)
     if asset_class:
         results = [r for r in results if r.get("asset_class") == asset_class]
+
+    if enrich_figi and results:
+        try:
+            from app.services.fundamentals.openfigi import OpenFIGIAdapter  # noqa: PLC0415
+            figi_adapter = OpenFIGIAdapter()
+            results = await figi_adapter.enrich_search_results(results)
+        except Exception:  # noqa: BLE001
+            pass  # enrichment is best-effort; return results without FIGI on failure
+
     return {"results": results, "count": len(results)}
 
 

@@ -116,7 +116,7 @@ async def test_ai_score_neutral_when_no_models():
     assert result["ticker"] == "AAPL"
     assert 0.0 <= result["score"] <= 100.0
     assert result["signal"] in ("bullish", "neutral", "bearish")
-    assert len(result["reasoning"]) == 3
+    assert len(result["reasoning"]) >= 3
     assert "components" in result
     assert "lstm_up" in result["components"]
     assert "xgb_long" in result["components"]
@@ -152,8 +152,8 @@ async def test_ai_score_components_present():
     assert isinstance(result["score"], float)
     assert result["signal"] in ("bullish", "neutral", "bearish")
     assert isinstance(result["reasoning"], list)
-    assert len(result["reasoning"]) == 3
-    for key in ("lstm_up", "xgb_long", "finbert_positive", "finbert_negative", "finbert_neutral"):
+    assert len(result["reasoning"]) >= 3
+    for key in ("lstm_up", "xgb_long", "finbert_positive", "finbert_negative", "finbert_neutral", "stocktwits_bullish"):
         assert key in result["components"]
     # finbert_positive should match the mocked bullish confidence
     assert result["components"]["finbert_positive"] == pytest.approx(0.9, abs=0.01)

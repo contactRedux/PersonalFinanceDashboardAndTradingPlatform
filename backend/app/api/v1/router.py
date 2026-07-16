@@ -3,11 +3,14 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    admin,
     alerts,
     auth,
     backtest,
     calendar,
     crypto,
+    forex_orders,
+    fundamentals,
     journal,
     macro,
     market,
@@ -42,4 +45,7 @@ api_v1_router.include_router(strategies.router, prefix="/strategies", tags=["str
 api_v1_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"])
 api_v1_router.include_router(journal.router, prefix="/journal", tags=["journal"])
 api_v1_router.include_router(ml.router, prefix="/ml", tags=["ml"])
+api_v1_router.include_router(fundamentals.router, prefix="/fundamentals", tags=["fundamentals"])
+api_v1_router.include_router(forex_orders.router, prefix="/orders/forex", tags=["orders"])
+api_v1_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_v1_router.include_router(utils.router, tags=["utils"])

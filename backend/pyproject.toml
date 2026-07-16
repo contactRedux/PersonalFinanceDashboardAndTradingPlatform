@@ -26,6 +26,7 @@ dependencies = [
     "pyotp>=2.10.0",
     "python-dotenv>=1.2.2",
     "python-jose>=3.5.0",
+    "python-multipart>=0.0.32",
     "redis[hiredis]>=8.0.1",
     "scikit-learn>=1.7.0",
     "sqlalchemy>=2.0.51",
@@ -34,14 +35,21 @@ dependencies = [
     "uvicorn[standard]>=0.51.0",
     "weasyprint>=65.0",
     "websockets>=16.1",
+    "tweepy>=4.14.0",
     "xgboost>=2.1.0",
     "yfinance>=1.5.1",
+    # Optional licensed dependencies (not installed by default):
+    #   refinitiv-data>=1.0.0  — Reuters/Refinitiv news (requires paid LSEG license)
+    #                            Install: pip install refinitiv-data>=1.0.0
+    #                            Activate: set REFINITIV_APP_KEY in .env
+    "mlflow>=2.22.0",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+pythonpath = ["."]
 env = [
     "APP_ENV=test",
     "JWT_SECRET_KEY=test-secret-key-minimum-32-chars-long",

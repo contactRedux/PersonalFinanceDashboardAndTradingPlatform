@@ -22,6 +22,8 @@ import React, {
 import { Panel } from "@/components/layout/Panel";
 import { ChartCanvas } from "./ChartCanvas";
 import { ChartToolbar } from "./ChartToolbar";
+import { PointAndFigureCanvas } from "./PointAndFigureCanvas";
+import { KagiCanvas } from "./KagiCanvas";
 import { useChartStore } from "@/store/chartStore";
 import { useMarketDataStore } from "@/store/marketDataStore";
 import { getBars, getVPVR } from "@/lib/api/market";
@@ -35,6 +37,8 @@ import { useFibonacciTool } from "./useFibonacciTool";
 import { useTrendlineTool } from "./useTrendlineTool";
 import { usePitchforkTool } from "./usePitchforkTool";
 import { useAnnotationTool } from "./useAnnotationTool";
+import { useGannFanTool } from "./useGannFanTool";
+import { useElliottWaveTool } from "./useElliottWaveTool";
 import { useRegimeOverlay } from "@/hooks/useRegimeOverlay";
 
 // ─── ChartCanvas imperative handle ──────────────────────────────────────────
@@ -93,6 +97,28 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
   const trendline = useTrendlineTool(chartRef, bars, seriesRef);
   const pitchfork = usePitchforkTool(chartRef, bars, seriesRef);
   const annotation = useAnnotationTool(chartRef, seriesRef);
+  const gannFan = useGannFanTool(chartRef, bars, seriesRef);
+  const elliottWave = useElliottWaveTool(chartRef, bars, seriesRef);
+
+  // Canvas chart dimensions state
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [canvasDims, setCanvasDims] = useState({ width: 600, height: 420 });
+
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        setCanvasDims({
+          width: Math.floor(entry.contentRect.width),
+          height: Math.floor(entry.contentRect.height),
+        });
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Persist drawings when they change
   useEffect(() => {
@@ -102,9 +128,11 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
         trendline: trendline.drawings,
         pitchfork: pitchfork.drawings,
         annotations: annotation.drawings,
+        gannFan: gannFan.drawings,
+        elliottWave: elliottWave.drawings,
       });
     }
-  }, [fib.drawings, trendline.drawings, pitchfork.drawings, annotation.drawings, panelId, setDrawings]);
+  }, [fib.drawings, trendline.drawings, pitchfork.drawings, annotation.drawings, gannFan.drawings, elliottWave.drawings, panelId, setDrawings]);
 
   // Fetch bars when symbol, timeframe, or chartType changes
   useEffect(() => {
@@ -220,12 +248,45 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
     }
   }, [annotation, fib, trendline, pitchfork]);
 
+  const handleGannFanToggle = useCallback(() => {
+    if (gannFan.isActive) {
+      gannFan.deactivate();
+    } else {
+      fib.deactivate();
+      trendline.deactivate();
+      pitchfork.deactivate();
+      annotation.deactivate();
+      elliottWave.deactivate();
+      gannFan.activate();
+    }
+  }, [gannFan, fib, trendline, pitchfork, annotation, elliottWave]);
+
+  const handleElliottWaveToggle = useCallback(
+    (mode: "impulse" | "corrective") => {
+      if (elliottWave.isActive && elliottWave.mode === mode) {
+        elliottWave.deactivate();
+      } else {
+        fib.deactivate();
+        trendline.deactivate();
+        pitchfork.deactivate();
+        annotation.deactivate();
+        gannFan.deactivate();
+        elliottWave.activate(mode);
+      }
+    },
+    [elliottWave, fib, trendline, pitchfork, annotation, gannFan]
+  );
+
   const handleClearDrawings = useCallback(() => {
     fib.clear();
     trendline.clear();
     pitchfork.clear();
     annotation.clear();
-  }, [fib, trendline, pitchfork, annotation]);
+    gannFan.clear();
+    elliottWave.clear();
+  }, [fib, trendline, pitchfork, annotation, gannFan, elliottWave]);
+
+  const isPriceAxisChart = config.chartType !== "pnf" && config.chartType !== "kagi";
 
   const toolbar = (
     <ChartToolbar
@@ -243,10 +304,15 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
       trendActive={trendline.isActive}
       pitchforkActive={pitchfork.isActive}
       annotationActive={annotation.isActive}
+      gannFanActive={gannFan.isActive}
+      elliottWaveActive={elliottWave.isActive}
+      elliottWaveMode={elliottWave.mode}
       onFibToggle={handleFibToggle}
       onTrendToggle={handleTrendToggle}
       onPitchforkToggle={handlePitchforkToggle}
       onAnnotationToggle={handleAnnotationToggle}
+      onGannFanToggle={handleGannFanToggle}
+      onElliottWaveToggle={handleElliottWaveToggle}
       onClearDrawings={handleClearDrawings}
     />
   );
@@ -254,7 +320,7 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
   return (
     <Panel id={panelId} title={`${config.symbol} · ${config.timeframe.toUpperCase()}`}>
       {toolbar}
-      {regime && (
+      {regime && isPriceAxisChart && (
         <div style={styles.regimeBadge}>
           <span style={{
             ...styles.regimePill,
@@ -277,16 +343,44 @@ export function ChartPanel({ panelId = "chart" }: ChartPanelProps) {
         </div>
       )}
       {!loading && !error && (
-        <ChartCanvas
-          bars={bars}
-          chartType={config.chartType}
-          latestQuote={latestQuote}
-          indicators={config.indicators}
-          height={420}
-          chartRef={chartRef}
-          seriesRef={seriesRef}
-          vpvr={vpvr}
-        />
+        <>
+          {/* Standard lightweight-charts view (candlestick, line, etc.) */}
+          <div style={{ display: isPriceAxisChart ? "block" : "none" }}>
+            <ChartCanvas
+              bars={bars}
+              chartType={config.chartType}
+              latestQuote={latestQuote}
+              indicators={config.indicators}
+              height={420}
+              chartRef={chartRef}
+              seriesRef={seriesRef}
+              vpvr={vpvr}
+            />
+          </div>
+
+          {/* Canvas-based chart types (P&F, Kagi) — shown when selected */}
+          {!isPriceAxisChart && (
+            <div
+              ref={canvasContainerRef}
+              style={{ width: "100%", height: 420, overflow: "hidden" }}
+            >
+              {config.chartType === "pnf" && (
+                <PointAndFigureCanvas
+                  bars={bars}
+                  width={canvasDims.width || 600}
+                  height={canvasDims.height || 420}
+                />
+              )}
+              {config.chartType === "kagi" && (
+                <KagiCanvas
+                  bars={bars}
+                  width={canvasDims.width || 600}
+                  height={canvasDims.height || 420}
+                />
+              )}
+            </div>
+          )}
+        </>
       )}
     </Panel>
   );

@@ -28,6 +28,8 @@ const CHART_TYPES: { label: string; value: ChartType }[] = [
   { label: "Base", value: "baseline" },
   { label: "Renko", value: "renko" },
   { label: "LnBrk", value: "line_break" },
+  { label: "P&F", value: "pnf" },
+  { label: "Kagi", value: "kagi" },
 ];
 
 const INDICATOR_TYPES: { label: string; type: string; defaultParams: Record<string, number> }[] = [
@@ -72,10 +74,15 @@ interface ChartToolbarProps {
   trendActive?: boolean;
   pitchforkActive?: boolean;
   annotationActive?: boolean;
+  gannFanActive?: boolean;
+  elliottWaveActive?: boolean;
+  elliottWaveMode?: "impulse" | "corrective";
   onFibToggle?: () => void;
   onTrendToggle?: () => void;
   onPitchforkToggle?: () => void;
   onAnnotationToggle?: () => void;
+  onGannFanToggle?: () => void;
+  onElliottWaveToggle?: (mode: "impulse" | "corrective") => void;
   onClearDrawings?: () => void;
 }
 
@@ -94,10 +101,15 @@ export function ChartToolbar({
   trendActive = false,
   pitchforkActive = false,
   annotationActive = false,
+  gannFanActive = false,
+  elliottWaveActive = false,
+  elliottWaveMode = "impulse",
   onFibToggle,
   onTrendToggle,
   onPitchforkToggle,
   onAnnotationToggle,
+  onGannFanToggle,
+  onElliottWaveToggle,
   onClearDrawings,
 }: ChartToolbarProps) {
   const [symbolInput, setSymbolInput] = useState(symbol);
@@ -303,7 +315,45 @@ export function ChartToolbar({
                 Note
               </button>
             )}
-            {onClearDrawings && (fibActive || trendActive || pitchforkActive || annotationActive) && (
+            {onGannFanToggle && (
+              <button
+                style={{ ...styles.btn, ...(gannFanActive ? styles.btnActive : {}) }}
+                onClick={onGannFanToggle}
+                aria-label="Gann Fan tool"
+                aria-pressed={gannFanActive}
+                title="Gann Fan: click pivot then reference point"
+              >
+                Gann
+              </button>
+            )}
+            {onElliottWaveToggle && (
+              <>
+                <button
+                  style={{
+                    ...styles.btn,
+                    ...(elliottWaveActive && elliottWaveMode === "impulse" ? styles.btnActive : {}),
+                  }}
+                  onClick={() => onElliottWaveToggle("impulse")}
+                  aria-label="Elliott Wave impulse tool"
+                  title="Elliott Wave: label impulse wave pivots (1-2-3-4-5)"
+                >
+                  EW1
+                </button>
+                <button
+                  style={{
+                    ...styles.btn,
+                    ...(elliottWaveActive && elliottWaveMode === "corrective" ? styles.btnActive : {}),
+                    color: "#f59e0b",
+                  }}
+                  onClick={() => onElliottWaveToggle("corrective")}
+                  aria-label="Elliott Wave corrective tool"
+                  title="Elliott Wave: label corrective wave pivots (A-B-C)"
+                >
+                  EWC
+                </button>
+              </>
+            )}
+            {onClearDrawings && (
               <button
                 style={{ ...styles.btn, color: "#ef4444", borderColor: "rgba(239,68,68,0.3)" }}
                 onClick={onClearDrawings}

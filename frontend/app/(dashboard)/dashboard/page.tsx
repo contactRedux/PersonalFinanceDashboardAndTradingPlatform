@@ -26,6 +26,7 @@ import { BacktestPanel } from "@/components/panels/BacktestPanel";
 import { VolatilityPanel } from "@/components/panels/VolatilityPanel";
 import { StrategyBuilderPanel } from "@/components/panels/StrategyBuilderPanel";
 import { TradeJournalPanel } from "@/components/panels/TradeJournalPanel";
+import { FundamentalsPanel } from "@/components/panels/FundamentalsPanel";
 import { MarketDataProvider } from "@/components/providers/MarketDataProvider";
 
 /**
@@ -152,6 +153,11 @@ export default function DashboardPage() {
         {/* ── Row 13 — Strategy Builder ── */}
         <div key="strategy-builder">
           <StrategyBuilderPanel panelId="strategy-builder" />
+        </div>
+
+        {/* ── Row 14 — Fundamentals (FMP) ── */}
+        <div key="fundamentals">
+          <FundamentalsPanel panelId="fundamentals" defaultSymbol="AAPL" />
         </div>
       </PanelGrid>
     </MarketDataProvider>

@@ -3,7 +3,8 @@ Market data provider router — priority-based selection with fallback.
 
 Priority order (configurable via MARKET_DATA_PROVIDER env var):
   1. alpaca  — best real-time streaming (requires API key)
-  2. yfinance — free polling fallback (always available)
+  2. oanda   — forex pairs via OANDA v20 REST API (requires API key)
+  3. yfinance — free polling fallback (always available)
 
 Usage:
     from app.services.market_data.router import get_provider
@@ -18,6 +19,7 @@ import structlog
 from app.config import get_settings
 from app.services.market_data.alpaca import AlpacaProvider
 from app.services.market_data.base import MarketDataProvider
+from app.services.market_data.oanda import OANDAProvider
 from app.services.market_data.yahoo_finance import YFinanceProvider
 
 logger = structlog.get_logger(__name__)
@@ -25,10 +27,11 @@ settings = get_settings()
 
 _providers: dict[str, MarketDataProvider] = {
     "alpaca": AlpacaProvider(),
+    "oanda": OANDAProvider(),
     "yfinance": YFinanceProvider(),
 }
 
-_priority = ["alpaca", "yfinance"]
+_priority = ["alpaca", "oanda", "yfinance"]
 
 
 def get_provider(name: str | None = None) -> MarketDataProvider:
@@ -49,12 +52,23 @@ def get_provider(name: str | None = None) -> MarketDataProvider:
                 reason="Alpaca API keys not configured",
             )
             return _providers["yfinance"]
+        # Check if oanda is actually configured
+        if preferred == "oanda" and not (settings.oanda_api_key and settings.oanda_account_id):
+            logger.warning(
+                "market_data.provider.fallback",
+                requested=preferred,
+                fallback="yfinance",
+                reason="OANDA API keys not configured",
+            )
+            return _providers["yfinance"]
         return provider
 
     # Unknown provider — use default priority order
     for p_name in _priority:
         p = _providers[p_name]
         if p_name == "alpaca" and not (settings.alpaca_api_key and settings.alpaca_api_secret):
+            continue
+        if p_name == "oanda" and not (settings.oanda_api_key and settings.oanda_account_id):
             continue
         logger.info("market_data.provider.selected", provider=p_name)
         return p

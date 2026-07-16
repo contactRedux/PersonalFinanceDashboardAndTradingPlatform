@@ -9,8 +9,20 @@ import type { FibDrawing } from "@/components/panels/ChartPanel/useFibonacciTool
 import type { TrendlineDrawing } from "@/components/panels/ChartPanel/useTrendlineTool";
 import type { PitchforkDrawing } from "@/components/panels/ChartPanel/usePitchforkTool";
 import type { AnnotationDrawing } from "@/components/panels/ChartPanel/useAnnotationTool";
+import type { GannFanDrawing } from "@/components/panels/ChartPanel/useGannFanTool";
+import type { ElliottWaveDrawing } from "@/components/panels/ChartPanel/useElliottWaveTool";
 
-export type ChartType = "candlestick" | "heikin_ashi" | "line" | "area" | "bar" | "baseline" | "renko" | "line_break";
+export type ChartType =
+  | "candlestick"
+  | "heikin_ashi"
+  | "line"
+  | "area"
+  | "bar"
+  | "baseline"
+  | "renko"
+  | "line_break"
+  | "pnf"
+  | "kagi";
 
 export interface IndicatorConfig {
   id: string;
@@ -24,6 +36,8 @@ export interface PanelDrawings {
   trendline: TrendlineDrawing[];
   pitchfork: PitchforkDrawing[];
   annotations: AnnotationDrawing[];
+  gannFan?: GannFanDrawing[];
+  elliottWave?: ElliottWaveDrawing[];
 }
 
 export interface PanelChartConfig {
@@ -51,7 +65,7 @@ const defaultConfig = (): PanelChartConfig => ({
   timeframe: "1d",
   chartType: "candlestick",
   indicators: [],
-  drawings: { fib: [], trendline: [], pitchfork: [], annotations: [] },
+  drawings: { fib: [], trendline: [], pitchfork: [], annotations: [], gannFan: [], elliottWave: [] },
 });
 
 export const useChartStore = create<ChartState>()(

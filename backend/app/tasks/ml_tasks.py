@@ -166,3 +166,53 @@ def train_xgboost_task(
             raise self.retry(exc=exc)
         except self.MaxRetriesExceededError:
             return {"status": "failed", "ticker": ticker, "error": str(exc)}
+
+
+@celery_app.task(name="tasks.train_transformer", bind=True, max_retries=1, default_retry_delay=60)
+def train_transformer_task(
+    self,
+    ticker: str,
+    start: str,
+    end: str,
+    epochs: int = 30,
+    d_model: int = 64,
+    n_heads: int = 4,
+    n_layers: int = 2,
+    seq_len: int = 30,
+) -> dict:
+    """
+    Train the TFT (Temporal Fusion Transformer) for a single ticker.
+
+    Integrates with MLflow experiment tracking and the model registry.
+    Returns the path to the saved weights file.
+    """
+    try:
+        import os  # noqa: PLC0415
+        import sys  # noqa: PLC0415
+
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)
+        ))))
+        if repo_root not in sys.path:
+            sys.path.insert(0, repo_root)
+
+        from ml.models.transformer.train import train_transformer  # noqa: PLC0415
+
+        weight_path = train_transformer(
+            ticker=ticker,
+            start=start,
+            end=end,
+            epochs=epochs,
+            d_model=d_model,
+            n_heads=n_heads,
+            n_layers=n_layers,
+            seq_len=seq_len,
+        )
+        logger.info("tasks.train_transformer.done", ticker=ticker, path=str(weight_path))
+        return {"status": "done", "ticker": ticker, "weight_path": str(weight_path)}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("tasks.train_transformer.error", ticker=ticker, error=str(exc))
+        try:
+            raise self.retry(exc=exc)
+        except self.MaxRetriesExceededError:
+            return {"status": "failed", "ticker": ticker, "error": str(exc)}
